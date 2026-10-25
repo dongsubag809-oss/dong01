@@ -2,6 +2,9 @@ package com.energyblue.househmi;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Build;
 import android.content.Intent;
 import android.net.Uri;
@@ -38,6 +41,9 @@ public final class MainActivity extends Activity {
   browser.getSettings().setAllowUniversalAccessFromFileURLs(false);
   browser.addJavascriptInterface(new NativeDiagnostics(),"NativeDiagnostics");
   updater = new ReleaseUpdater(this, this::emit);
+  ConnectivityManager cm=(ConnectivityManager)getSystemService(Context.CONNECTIVITY_SERVICE);
+  NetworkInfo network=cm==null?null:cm.getActiveNetworkInfo();
+  if(network!=null&&network.isConnected()&&network.getType()==ConnectivityManager.TYPE_WIFI)updater.checkAuto();
   discovery = new LanDiscovery(); discovery.start();
   setContentView(browser); browser.loadUrl("file:///android_asset/index.html");
  }
