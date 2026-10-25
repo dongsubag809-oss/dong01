@@ -50,7 +50,14 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
-          gradle --no-daemon :app:assembleRelease
+          VERSION="${RELEASE_TAG#v}"
+          MAJOR="${VERSION%%.*}"
+          MINOR="${VERSION#*.}"
+          MINOR="${MINOR%%.*}"
+          PATCH=0
+          if [[ "${VERSION}" == *.*.* ]]; then PATCH="${VERSION##*.}"; fi
+          VERSION_CODE=$((10#$MAJOR * 10000 + 10#$MINOR * 100 + 10#$PATCH))
+          gradle --no-daemon :app:assembleRelease -PhmiVersionCode="$VERSION_CODE" -PhmiVersionName="$VERSION"
           mkdir -p "$RUNNER_TEMP/hmi-sign" dist
           echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/hmi-sign/signing.jks"
           chmod 600 "$RUNNER_TEMP/hmi-sign/signing.jks"
