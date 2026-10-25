@@ -74,7 +74,9 @@ public final class ReleaseUpdater {
  void download(){executor.execute(()->{
   String link=apkUrl,sha=shaUrl,name=expectedName;
   if(link==null||sha==null){send("update","먼저 업데이트 확인을 눌러 주세요.");return;}
-  File out=new File(activity.getCacheDir(),"energyblue-verified.apk");
+  File otaDir=new File(activity.getCacheDir(),"ota");
+  if(!otaDir.isDirectory()&&!otaDir.mkdirs()){send("update","업데이트 파일 저장 폴더 생성 실패");return;}
+  File out=new File(otaDir,"energyblue-verified.apk");
   try{
    verifiedApk=null;
    String checksum=getText(sha,10000).trim();
