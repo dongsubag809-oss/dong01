@@ -70,6 +70,7 @@ public final class MainActivity extends Activity {
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
   @JavascriptInterface public String getIp(){return localIp();}
+  @JavascriptInterface public String getAppVersion(){return BuildConfig.VERSION_NAME;}
   @JavascriptInterface public void checkUpdate(){updater.check();}
   @JavascriptInterface public void downloadUpdate(){updater.download();}
   @JavascriptInterface public void installUpdate(){updater.install();}
