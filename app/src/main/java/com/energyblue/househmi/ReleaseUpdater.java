@@ -52,7 +52,8 @@ public final class ReleaseUpdater {
    if(!trusted(apk)||!trusted(sha))throw new IOException("잘못된 다운로드 주소");
    apkUrl=apk;shaUrl=sha;expectedName=name;verifiedApk=null;
    send("update","최신 배포: "+tag+" / 현재 "+BuildConfig.VERSION_NAME+" · 다운로드 준비 완료");
-  }catch(Exception e){send("update","업데이트 확인 실패: "+e.getMessage());}
+  }catch(java.io.FileNotFoundException e){send("update","아직 게시된 정식 업데이트가 없습니다. GitHub Releases에 서명된 APK와 SHA-256 파일을 배포하면 검색됩니다.");}
+  catch(Exception e){send("update","업데이트 확인 실패: "+e.getMessage());}
  });}
  void download(){executor.execute(()->{
   String link=apkUrl,sha=shaUrl,name=expectedName;
