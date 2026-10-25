@@ -6,6 +6,8 @@ def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('4.73-
 android {
     namespace 'com.energyblue.househmi'
     compileSdk 35
+    ndkVersion '27.2.12479018'
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt' version '3.22.1' } }
     buildFeatures { buildConfig true }
     // Private sideloaded industrial Android 7.1.2 HMI, not a Google Play submission.
     // Suppress only Play Store's minimum target warning; retain all other release lint checks.
@@ -14,6 +16,7 @@ android {
         applicationId 'com.energyblue.househmi'
         minSdk 23
         targetSdk 28
+        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
         versionCode = otaVersionCode
         versionName = otaVersionName
     }
