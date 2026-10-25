@@ -1,0 +1,5 @@
+plugins { id 'com.android.application' }
+android { namespace 'com.energyblue.househmi'; compileSdk 35
+    defaultConfig { applicationId 'com.energyblue.househmi'; minSdk 23; targetSdk 28; versionCode 472; versionName '4.72-alpha' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
