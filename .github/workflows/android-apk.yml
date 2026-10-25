@@ -27,6 +27,8 @@ jobs:
           gradle-version: '8.10.2'
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
+      - name: Verify release compilation and lint (unsigned only)
+        run: gradle --no-daemon :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: ENERGYBLUE-IXP101H1-V4.73-alpha-APK
