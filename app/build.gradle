@@ -7,7 +7,7 @@ android {
     namespace 'com.energyblue.househmi'
     compileSdk 35
     ndkVersion '27.2.12479018'
-    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt' version '3.22.1' } }
+    externalNativeBuild { cmake { path file('src/main/cpp/CMakeLists.txt') } }
     buildFeatures { buildConfig true }
     // Private sideloaded industrial Android 7.1.2 HMI, not a Google Play submission.
     // Suppress only Play Store's minimum target warning; retain all other release lint checks.
