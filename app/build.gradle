@@ -1,7 +1,22 @@
 plugins { id 'com.android.application' }
-android { namespace 'com.energyblue.househmi'; compileSdk 35
+
+def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('473')).toInteger()
+def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('4.73-alpha')
+
+android {
+    namespace 'com.energyblue.househmi'
+    compileSdk 35
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'com.energyblue.househmi'; minSdk 23; targetSdk 28; versionCode (project.findProperty('hmiVersionCode') ?: '473').toString().toInteger(); versionName (project.findProperty('hmiVersionName') ?: '4.73-alpha').toString() }
-    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    defaultConfig {
+        applicationId 'com.energyblue.househmi'
+        minSdk 23
+        targetSdk 28
+        versionCode = otaVersionCode
+        versionName = otaVersionName
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
 }
 dependencies { implementation 'androidx.core:core:1.12.0' }
