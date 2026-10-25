@@ -101,7 +101,7 @@ public final class ReleaseUpdater {
  }
  private static boolean trusted(String url){
   try{URL u=new URL(url);return "https".equalsIgnoreCase(u.getProtocol())&&
-   ("github.com".equalsIgnoreCase(u.getHost())||"objects.githubusercontent.com".equalsIgnoreCase(u.getHost())||
+   ("api.github.com".equalsIgnoreCase(u.getHost())||"github.com".equalsIgnoreCase(u.getHost())||"objects.githubusercontent.com".equalsIgnoreCase(u.getHost())||
     "release-assets.githubusercontent.com".equalsIgnoreCase(u.getHost()));}catch(Exception e){return false;}
  }
  private static HttpURLConnection connect(String url)throws IOException{
