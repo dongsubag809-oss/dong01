@@ -32,9 +32,16 @@ public final class ReleaseUpdater {
  void close(){closed=true;executor.shutdownNow();}
  private void send(String type,String msg){if(!closed)report.report(type,msg);}
  void check(){executor.execute(()->{
+  apkUrl=null;shaUrl=null;expectedName=null;verifiedApk=null;
   try{
    JSONObject release=new JSONObject(getText(API,350000));
    String tag=release.optString("tag_name","?");
+   int remoteCode=versionCodeFromTag(tag);
+   int installedCode=activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionCode;
+   if(remoteCode<=installedCode){
+    send("update","최신 버전입니다. 현재 "+BuildConfig.VERSION_NAME+" / 서버 "+tag+" · 재설치 불필요");
+    return;
+   }
    JSONArray assets=release.getJSONArray("assets");
    String apk=null,sha=null,name=null;
    for(int i=0;i<assets.length();i++){
@@ -55,6 +62,15 @@ public final class ReleaseUpdater {
   }catch(java.io.FileNotFoundException e){send("update","아직 게시된 정식 업데이트가 없습니다. GitHub Releases에 서명된 APK와 SHA-256 파일을 배포하면 검색됩니다.");}
   catch(Exception e){send("update","업데이트 확인 실패: "+e.getMessage());}
  });}
+ private static int versionCodeFromTag(String tag)throws IOException{
+  if(tag==null||!tag.matches("v[0-9]+\\.[0-9]+(\\.[0-9]+)?"))throw new IOException("업데이트 버전 형식 오류: "+tag);
+  String[] parts=tag.substring(1).split("\\.");
+  try{
+   int major=Integer.parseInt(parts[0]),minor=Integer.parseInt(parts[1]),patch=parts.length==3?Integer.parseInt(parts[2]):0;
+   if(major>1000||minor>99||patch>99)throw new IOException("지원하지 않는 업데이트 버전");
+   return major*10000+minor*100+patch;
+  }catch(NumberFormatException e){throw new IOException("업데이트 버전 변환 오류");}
+ }
  void download(){executor.execute(()->{
   String link=apkUrl,sha=shaUrl,name=expectedName;
   if(link==null||sha==null){send("update","먼저 업데이트 확인을 눌러 주세요.");return;}
