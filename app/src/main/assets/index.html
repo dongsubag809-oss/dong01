@@ -30,7 +30,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 .badge{display:inline-block;background:#76572a;padding:4px 8px;border-radius:6px;color:#ffe7ac;font-size:12px;margin-left:6px}
 @media(max-width:950px){.tiles{grid-template-columns:repeat(3,1fr)}.controls{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.shell{grid-template-columns:135px 1fr}nav button{font-size:12px;padding:9px 6px}.tiles{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.controls{grid-template-columns:1fr}}
 </style></head>
-<body><header><div><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · 가로 터치 HMI · PLC 실제 제어 미연결</div></div><div class="status">● 출력 안전 잠금 <span id="clock"></span><br><span class="sub">HMI V<span id="version">4.77</span> · IP <span id="ip">확인 중</span></span></div></header>
+<body><header><div><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · 가로 터치 HMI · PLC 실제 제어 미연결</div></div><div class="status">● 출력 안전 잠금 <span id="clock"></span><br><span class="sub">HMI V<span id="version">확인 중</span> · IP <span id="ip">확인 중</span></span></div></header>
 <div class="shell"><nav>
 <button class="active" data-page="dashboard" onclick="show('dashboard')">▦ 종합 대시보드</button>
 <button data-page="manual" onclick="show('manual')">⚙ 수동 제어</button>
@@ -71,5 +71,5 @@ function refreshIp(){el('ip').textContent=window.NativeDiagnostics?window.Native
 function probe(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.probe('/dev/ttyS5'):'Android HMI 앱 전용'}
 window.nativeMessage=function(value){try{let p=JSON.parse(value);let target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
-render();refreshIp();tick();setInterval(tick,1000);
+render();refreshIp();if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
 </script></body></html>
