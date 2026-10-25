@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
   }catch(Exception ignored){}
   return "IP 확인 불가 (Wi-Fi 연결 확인)";
  }
- @Override protected void onDestroy(){destroyed=true;if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){SerialPort.close();destroyed=true;if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  public final class NativeDiagnostics {
   @JavascriptInterface public String probe(String path){
    try {JSONObject obj=new JSONObject();
@@ -75,6 +75,8 @@ public final class MainActivity extends Activity {
     obj.put("result",file.exists()?"장치 파일 확인됨 (RS485 통신 미검증)":"장치 파일 없음");return obj.toString();
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
+  @JavascriptInterface public String openCom5(String path,int baud){return SerialPort.open(path,baud)+" | PLC ID 1,2 유지 | 제어 명령 미전송";}
+  @JavascriptInterface public String closeCom5(){SerialPort.close();return "COM5 닫힘";}
   @JavascriptInterface public String getIp(){return localIp();}
   @JavascriptInterface public String getAppVersion(){return BuildConfig.VERSION_NAME;}
   @JavascriptInterface public void checkUpdate(){updater.check();}
