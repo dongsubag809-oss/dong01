@@ -31,7 +31,9 @@ public final class ReleaseUpdater {
  ReleaseUpdater(Activity a,Reporter r){activity=a;report=r;}
  void close(){closed=true;executor.shutdownNow();}
  private void send(String type,String msg){if(!closed)report.report(type,msg);}
- void check(){executor.execute(()->{
+ void check(){checkInternal(false);}
+ void checkAuto(){checkInternal(true);}
+ private void checkInternal(boolean autoDownload){executor.execute(()->{
   apkUrl=null;shaUrl=null;expectedName=null;verifiedApk=null;
   try{
    JSONObject release=new JSONObject(getText(API,350000));
@@ -58,7 +60,8 @@ public final class ReleaseUpdater {
    if(sha==null){send("update","SHA-256 검증 파일이 없어 설치할 수 없습니다. "+name+".sha256 파일 필요");return;}
    if(!trusted(apk)||!trusted(sha))throw new IOException("잘못된 다운로드 주소");
    apkUrl=apk;shaUrl=sha;expectedName=name;verifiedApk=null;
-   send("update","최신 배포: "+tag+" / 현재 "+BuildConfig.VERSION_NAME+" · 다운로드 준비 완료");
+   send("update","최신 배포: "+tag+" / 현재 "+BuildConfig.VERSION_NAME+" · "+(autoDownload?"Wi-Fi 자동 다운로드 시작":"다운로드 준비 완료"));
+   if(autoDownload)download();
   }catch(java.io.FileNotFoundException e){send("update","아직 게시된 정식 업데이트가 없습니다. GitHub Releases에 서명된 APK와 SHA-256 파일을 배포하면 검색됩니다.");}
   catch(Exception e){send("update","업데이트 확인 실패: "+e.getMessage());}
  });}
