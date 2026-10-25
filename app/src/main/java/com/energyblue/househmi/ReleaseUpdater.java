@@ -129,6 +129,7 @@ public final class ReleaseUpdater {
  private static String getText(String url,int max)throws IOException {
   HttpURLConnection c=connect(url);
   try{
+   if(c.getResponseCode()==404)throw new java.io.FileNotFoundException("GitHub Releases 게시본 없음");
    if(c.getResponseCode()!=200)throw new IOException("HTTP "+c.getResponseCode());
    ByteArrayOutputStream out=new ByteArrayOutputStream();
    try(InputStream in=c.getInputStream()){
