@@ -10,7 +10,7 @@
 <p><small>GitHub Releases에 등록된 APK를 확인하고 SHA-256을 검사합니다. IP 번호를 직접 입력할 필요가 없습니다.</small></p>
 <button onclick="call('checkUpdate')">1. 업데이트 검색</button><button onclick="call('downloadUpdate')">2. 새 APK 다운로드</button><button onclick="call('installUpdate')">3. 설치 승인</button>
 <pre id="updateStatus">새 버전을 검색하려면 첫 번째 버튼을 누르세요.</pre>
-<p class="notice"><small>현재는 진단용 V4.73-alpha입니다. 기존 APK와 서명 인증서가 다르면 Android가 덮어쓰기를 거부할 수 있습니다. 업데이트 중 PLC 출력은 반드시 안전 상태로 유지하세요.</small></p>
+<p class="notice"><small>현재 프로그램은 네트워크 및 업데이트 진단용입니다. 기존 APK와 서명 인증서가 다르면 Android가 덮어쓰기를 거부할 수 있습니다. 업데이트 중 PLC 출력은 반드시 안전 상태로 유지하세요.</small></p>
 </section>
 <section><h2>RS485 통신 진단 (미검증)</h2><p>COM5: PLC Slave ID 1, 2 / COM6: 센서 전용 예약</p><button onclick="probe()">포트 접근 확인</button><pre id="out">실제 PLC 출력 명령 잠금</pre><small>표시되는 경로 /dev/ttyS5는 예시이며 해당 장치의 COM5 실제 경로로 확인된 값이 아닙니다.</small></section>
 <section><h2>제어 안전 상태</h2><p>PLC 출력 명령 잠금 · 실제 제어 불가</p><small>기존 V4.70 자동제어 화면과 RS485 드라이버 전체 이식 전입니다. 현재 APK는 네트워크 진단 및 업데이트 기능을 시험하기 위한 버전입니다.</small></section>
