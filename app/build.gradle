@@ -7,6 +7,9 @@ android {
     namespace 'com.energyblue.househmi'
     compileSdk 35
     buildFeatures { buildConfig true }
+    // Private sideloaded industrial Android 7.1.2 HMI, not a Google Play submission.
+    // Suppress only Play Store's minimum target warning; retain all other release lint checks.
+    lint { disable 'ExpiredTargetSdkVersion' }
     defaultConfig {
         applicationId 'com.energyblue.househmi'
         minSdk 23
