@@ -31,5 +31,5 @@ jobs:
         run: gradle --no-daemon :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: ENERGYBLUE-IXP101H1-V4.83-APK
+          name: ENERGYBLUE-IXP101H1-V4.84-APK
           path: app/build/outputs/apk/debug/app-debug.apk
