@@ -38,13 +38,13 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <button data-page="schedule" onclick="show('schedule')">▤ 예약 운전</button>
 <button data-page="env" onclick="show('env')">☁ 환경 모니터링</button>
 <button data-page="nutrient" onclick="show('nutrient')">◈ 양액·관수</button>
-<button data-page="io" onclick="show('io')">⇄ I/O · RS485 설정</button>
+<button data-page="names" onclick="show('names')">✎ 동 이름 설정</button><button data-page="io" onclick="show('io')">⇄ I/O · RS485 설정</button>
 <button data-page="update" onclick="show('update')">↻ 프로그램 업데이트</button>
 </nav><main>
 <section id="dashboard" class="page active"><h2>5동 하우스 운영 현황</h2><p class="muted">각 동을 터치하면 해당 동 수동제어 화면을 열 수 있습니다. 측정값은 PLC와 센서가 연결되기 전까지 표시하지 않습니다.</p><div class="tiles" id="houses"></div>
 <div class="grid2"><div class="panel"><h3>전체 시스템 상태</h3><div class="row"><span class="badge">COM5 PLC 미연결</span><span class="badge">COM6 센서 미연결</span><span class="badge">제어 출력 잠금</span></div><p class="muted" style="margin-top:12px">PLC Slave ID 1, 2 · 장치 명령 송신 비활성화 · 상태 실측 데이터 없음</p></div><div class="panel"><h3>긴급 안내</h3><p class="warn">이 버전은 화면 및 업데이트 검증용입니다. 앱의 수동/자동 버튼은 실제 장비를 구동하지 않습니다.</p><p class="muted">실제 비상정지 회로는 HMI와 독립된 하드웨어로 구성해야 합니다.</p></div></div>
 </section>
-<section id="manual" class="page"><h2>수동 제어 <span class="badge">출력 잠금</span></h2><div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">PLC 통신 및 인터록 검증 후 제어 활성화 예정</span></div><div class="controls" id="manualControls"></div></section>
+<section id="names" class="page"><h2>동 이름 설정</h2><div class="panel"><div id="nameFields"></div><button class="primary" onclick="saveNames()">이름 저장</button><p id="nameStatus" class="muted"></p></div></section><section id="manual" class="page"><h2>수동 제어 <span class="badge">출력 잠금</span></h2><div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">PLC 통신 및 인터록 검증 후 제어 활성화 예정</span></div><div class="controls" id="manualControls"></div></section>
 <section id="auto" class="page"><h2>자동 제어 조건 설정</h2><p class="warn">온습도·창문·환풍기 조건 설정 화면 초안입니다. 제어 로직 연결 전까지 저장/출력되지 않습니다.</p><div class="grid2"><div class="panel"><h3>온도 운전</h3><table><tr><td>환기 시작 온도</td><td>설정 전</td></tr><tr><td>환기 정지 온도</td><td>설정 전</td></tr><tr><td>난방 시작 온도</td><td>설정 전</td></tr><tr><td>난방 정지 온도</td><td>설정 전</td></tr></table></div><div class="panel"><h3>제어 보호 조건</h3><table><tr><td>열림/닫힘 상호 인터록</td><td>검증 전</td></tr><tr><td>방향 변경 지연</td><td>0.5초 설계 기준</td></tr><tr><td>센서 통신 상실</td><td>정책 결정 필요</td></tr><tr><td>상한/하한 리미트</td><td>DI 맵 검증 필요</td></tr></table></div></div></section>
 <section id="schedule" class="page"><h2>예약 운전 스케줄</h2><p class="muted">동별 스케줄 등록 및 시간 중복 처리 기능은 PLC 제어 로직 통합 시 연결됩니다.</p><table><thead><tr><th>예약 항목</th><th>적용 대상</th><th>상태</th></tr></thead><tbody id="schedules"></tbody></table></section>
 <section id="env" class="page"><h2>환경 모니터링</h2><div class="tiles" id="sensors"></div><div class="panel" style="margin-top:12px"><h3>센서 통신</h3><p>COM6 · 온습도·토양 센서 RS-485 예정</p><p class="warn">실측 통신 전까지 온도·습도·토양 값은 ‘미수신’으로만 표시합니다.</p></div></section>
@@ -54,16 +54,23 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 </main></div>
 <script>
 var selected=1;
+var names=[1,2,3,4,5].map(n=>n+"동");
+try{var stored=JSON.parse(localStorage.getItem("eb-house-names"));if(Array.isArray(stored)&&stored.length===5)names=stored.map((v,i)=>typeof v==="string"&&v.trim()?v.trim().slice(0,24):(i+1)+"동")}catch(e){}
+function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function hn(n){return esc(names[n-1])}
+function nameFields(){el("nameFields").innerHTML=names.map((v,i)=>'<div class="row" style="margin:10px 0"><label>'+(i+1)+'동</label><input maxlength="24" id="nm'+i+'" value="'+esc(v)+'"></div>').join("")}
+function saveNames(){var a=names.map((v,i)=>el("nm"+i).value.trim());if(a.some(v=>!v)){el("nameStatus").textContent="모든 이름을 입력하세요";return}try{localStorage.setItem("eb-house-names",JSON.stringify(a));names=a;render();el("nameStatus").textContent="저장 완료"}catch(e){el("nameStatus").textContent="저장 실패"}}
 function el(id){return document.getElementById(id)}
 function show(id){document.querySelectorAll('.page').forEach(function(x){x.classList.toggle('active',x.id===id)});document.querySelectorAll('nav button').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-page')===id)});document.querySelector('main').scrollTop=0}
 function houseSvg(){return '<svg viewBox="0 0 160 90" aria-hidden="true"><path d="M10 73 L10 40 Q80 -20 150 40 L150 73 Z" fill="#21495a" stroke="#83c9dd" stroke-width="3"/><path d="M25 73 L25 41 Q80 0 135 41 L135 73" fill="none" stroke="#70aabd" stroke-width="2"/><path d="M80 13 V73 M10 42 H150 M10 74 H150" stroke="#70aabd" stroke-width="2"/><path d="M33 66 Q44 47 55 66 M60 66 Q71 47 82 66 M87 66 Q98 47 109 66 M112 66 Q123 47 134 66" fill="none" stroke="#74b585" stroke-width="4"/></svg>'}
 var controlItems=['내측 창문 좌측','내측 창문 우측','외측 창문 좌측','외측 창문 우측','그늘막 좌측','그늘막 우측','천장 창문 좌측','천장 창문 우측','환풍기 1','환풍기 2','바닥 환풍기','조명 1','조명 2','열풍기','관수 밸브'];
 function render(){
-el('houses').innerHTML=[1,2,3,4,5].map(function(n){return '<article class="house '+(selected===n?'active':'')+'" onclick="selected='+n+';render();show(\'manual\')"><div class="house-title">🏡 '+n+'동 <span class="badge">통신 대기</span></div>'+houseSvg()+'<div class="metric"><div><span>온도</span><strong>— °C</strong></div><div><span>습도</span><strong>— %</strong></div></div><div class="state">자동운전 상태 미확인</div></article>'}).join('');
-el('houseChoice').value=String(selected);
+nameFields();
+el('houses').innerHTML=[1,2,3,4,5].map(function(n){return '<article class="house '+(selected===n?'active':'')+'" onclick="selected='+n+';render();show(\'manual\')"><div class="house-title">🏡 '+hn(n)+' <span class="badge">통신 대기</span></div>'+houseSvg()+'<div class="metric"><div><span>온도</span><strong>— °C</strong></div><div><span>습도</span><strong>— %</strong></div></div><div class="state">자동운전 상태 미확인</div></article>'}).join('');
+el('houseChoice').innerHTML=[1,2,3,4,5].map(n=>'<option value="'+n+'">'+hn(n)+'</option>').join('');el('houseChoice').value=String(selected);
 el('manualControls').innerHTML=controlItems.map(function(n){let moving=/창문|그늘막/.test(n);return '<div class="control"><h3>'+n+'</h3>'+(moving?'<button disabled>▲ 열림</button><button disabled>■ 정지</button><button disabled>▼ 닫힘</button>':'<button disabled>켜기</button><button disabled>끄기</button>')+'<p class="muted">상태: 미수신</p></div>'}).join('');
-el('sensors').innerHTML=[1,2,3,4,5].map(function(n){return '<div class="house"><div class="house-title">'+n+'동</div><p>온도: 미수신</p><p>습도: 미수신</p><p>토양: 미수신</p></div>'}).join('');
-el('valves').innerHTML=[1,2,3,4,5].map(function(n){return '<tr><td>'+n+'동 밸브</td><td>미수신</td></tr>'}).join('');
+el('sensors').innerHTML=[1,2,3,4,5].map(function(n){return '<div class="house"><div class="house-title">'+hn(n)+'</div><p>온도: 미수신</p><p>습도: 미수신</p><p>토양: 미수신</p></div>'}).join('');
+el('valves').innerHTML=[1,2,3,4,5].map(function(n){return '<tr><td>'+hn(n)+' 밸브</td><td>미수신</td></tr>'}).join('');
 el('schedules').innerHTML=['환풍기','창문 개폐','그늘막','조명','관수','양액 공급','온습도 연동','난방'].map(function(n){return '<tr><td>'+n+'</td><td>동별 / 공통 설정 예정</td><td class="warn">비활성</td></tr>'}).join('')
 }
 function call(name){if(window.NativeDiagnostics&&typeof window.NativeDiagnostics[name]==='function'){window.NativeDiagnostics[name]()}else{el('updateStatus').textContent='Android HMI 앱에서만 실행 가능합니다.'}}
