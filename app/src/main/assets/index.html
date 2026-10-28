@@ -56,7 +56,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 var selected=1;
 var names=[1,2,3,4,5].map(n=>n+"동");
 try{var stored=JSON.parse(localStorage.getItem("eb-house-names"));if(Array.isArray(stored)&&stored.length===5)names=stored.map((v,i)=>typeof v==="string"&&v.trim()?v.trim().slice(0,24):(i+1)+"동")}catch(e){}
-function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function esc(v){return String(v).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function hn(n){return esc(names[n-1])}
 function nameFields(){el("nameFields").innerHTML=names.map((v,i)=>'<div class="row" style="margin:10px 0"><label>'+(i+1)+'동</label><input maxlength="24" id="nm'+i+'" value="'+esc(v)+'"></div>').join("")}
 function saveNames(){var a=names.map((v,i)=>el("nm"+i).value.trim());if(a.some(v=>!v)){el("nameStatus").textContent="모든 이름을 입력하세요";return}try{localStorage.setItem("eb-house-names",JSON.stringify(a));names=a;render();el("nameStatus").textContent="저장 완료"}catch(e){el("nameStatus").textContent="저장 실패"}}
