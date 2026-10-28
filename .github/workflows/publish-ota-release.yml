@@ -1,8 +1,5 @@
 name: Publish HMI Wi-Fi Update Release
 on:
-  push:
-    branches: [feature/v4-83-house-names]
-    paths: ['.github/workflows/publish-ota-release.yml']
   workflow_dispatch:
     inputs:
       tag:
@@ -49,7 +46,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.HMI_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.HMI_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.HMI_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v4.86' || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
@@ -73,7 +70,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v4.86' || inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
