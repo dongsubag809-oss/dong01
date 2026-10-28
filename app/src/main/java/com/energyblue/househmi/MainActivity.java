@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
   browser=new WebView(this); browser.setWebViewClient(new WebViewClient()); browser.setWebChromeClient(new WebChromeClient());
   browser.getSettings().setJavaScriptEnabled(true);
+  browser.getSettings().setDomStorageEnabled(true);
   browser.getSettings().setAllowFileAccess(true);
   browser.getSettings().setAllowFileAccessFromFileURLs(false);
   browser.getSettings().setAllowUniversalAccessFromFileURLs(false);
