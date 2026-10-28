@@ -29,6 +29,21 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 .log{background:#0c2030;border:1px solid #3f5f75;min-height:52px;white-space:pre-wrap;padding:12px;border-radius:9px;color:#b8e0f0;overflow-wrap:anywhere}
 .badge{display:inline-block;background:#76572a;padding:4px 8px;border-radius:6px;color:#ffe7ac;font-size:12px;margin-left:6px}
 @media(max-width:950px){.tiles{grid-template-columns:repeat(3,1fr)}.controls{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.shell{grid-template-columns:135px 1fr}nav button{font-size:12px;padding:9px 6px}.tiles{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.controls{grid-template-columns:1fr}}
+
+/* Independent touch keyboard for industrial Android WebView. */
+#ebKeyboard{display:none;position:fixed;inset:0;background:rgba(1,12,22,.83);z-index:9999;align-items:center;justify-content:center;padding:12px}
+#ebKeyboard.open{display:flex}
+.kb-panel{width:min(850px,98vw);max-height:94vh;overflow-y:auto;background:#152c3e;border:2px solid #70c7df;border-radius:14px;padding:12px}
+.kb-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+#kbPreview{display:block;width:100%;font-size:22px;padding:12px;min-height:52px}
+.kb-modes{display:flex;gap:7px;margin:8px 0}
+.kb-modes button{flex:1}
+.kb-keys{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:5px}
+.kb-keys button{padding:4px 0;min-width:0;min-height:47px;font-size:23px}
+.kb-actions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.kb-actions button{flex:1}
+.kb-on{background:#287e9a!important;border-color:#8eeaff!important}
+@media(max-height:500px){.kb-keys button{min-height:36px}.kb-panel{padding:8px}}
 </style></head>
 <body><header><div><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · 가로 터치 HMI · PLC 실제 제어 미연결</div></div><div class="status">● 출력 안전 잠금 <span id="clock"></span><br><span class="sub">HMI V<span id="version">확인 중</span> · IP <span id="ip">확인 중</span></span></div></header>
 <div class="shell"><nav>
@@ -52,7 +67,59 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <section id="io" class="page"><h2>I/O 및 통신 진단</h2><div class="grid2"><div class="panel"><h3>PLC / 센서 연결 정보</h3><p>COM5: PLC Slave ID 1·2</p><p>COM6: 센서 RS-485 예약</p><p>출력: ID 1 DO01~DO64 + ID 2 DO01~DO64 = 총 128DO (장비별 결선표 검증 필요)</p><div class="row"><label>COM5 실제 장치 경로 <input id="com5Path" placeholder="/dev/tty..." style="width:190px" autocomplete="off"></label><label>속도 <select id="com5Baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label></div><div class="row" style="margin:10px 0"><button onclick="openCom5()">COM5 포트 열기</button><button onclick="closeCom5()">포트 닫기</button><button onclick="probe()">장치 경로 확인</button></div><p class="muted">PLC Slave ID 1·2 유지. 실제 포트 경로를 입력해야 하며 주소·명령은 변경하지 않습니다. 8N1 포트 개방만 수행합니다.</p><div class="log" id="out">실제 PLC 제어 명령 잠금</div></div><div class="panel"><h3>안전 기본값</h3><p class="warn">실기기 구동 미허용</p><p>모터 정·역 동시 출력 금지, 0.5초 인터록, DI 리미트 확인, 통신 상실 시 안전정지 등은 PLC 실기 검증 후 승인해야 합니다.</p><p class="muted">표시되는 /dev/ttyS5는 진단용 예시 경로이며 실제 COM5 장치 경로가 확인된 것은 아닙니다.</p></div></div><div class="panel" style="margin-top:12px"><h3>예정 I/O 채널 매핑</h3><table><tr><th>장치 분류</th><th>대상</th><th>상태</th></tr><tr><td>창문 / 그늘막</td><td>5개동 내외측 창문, 좌·우 그늘막</td><td>미배정</td></tr><tr><td>환풍기 / 바닥 환풍기</td><td>동별 송풍</td><td>미배정</td></tr><tr><td>조명 / 열풍기</td><td>동별 제어</td><td>미배정</td></tr><tr><td>관수 / 양액</td><td>공통 혼합기 + 동별 밸브</td><td>미배정</td></tr></table></div></section>
 <section id="update" class="page"><h2>Wi-Fi 프로그램 업데이트</h2><p class="muted">GitHub Releases의 정식 서명 APK를 내려받고 SHA-256을 검증합니다. 설치 시 Android 승인 화면이 나타납니다.</p><div class="row"><button class="primary" onclick="call('checkUpdate')">1. 업데이트 검색</button><button onclick="call('downloadUpdate')">2. 새 APK 다운로드</button><button onclick="call('installUpdate')">3. 설치 승인</button><button onclick="refreshIp()">IP 새로고침</button></div><div class="log" id="updateStatus" style="margin-top:16px">새 버전을 검색하려면 업데이트 검색을 누르세요.</div><p class="warn">설치 중 실제 PLC 출력은 안전 상태로 유지하세요. 업데이트 후에는 앱을 수동으로 다시 열어야 할 수 있습니다.</p><p class="muted">HMI LAN 자동검색 UDP 포트: 38541</p></section>
 </main></div>
+<div id="ebKeyboard" role="dialog" aria-modal="true" aria-label="이름 입력 터치 키보드">
+ <div class="kb-panel">
+  <div class="kb-header"><strong>한글 · 영문 · 숫자 터치 키보드</strong><button type="button" onclick="kbClose(false)">✕ 취소</button></div>
+  <input id="kbPreview" readonly maxlength="40" aria-label="입력 중인 이름">
+  <div class="kb-modes"><button type="button" id="kbModeKo" onclick="kbModeSet('ko')">한글</button><button type="button" id="kbModeEn" onclick="kbModeSet('en')">영문</button><button type="button" id="kbModeNum" onclick="kbModeSet('num')">숫자</button><button type="button" id="kbShift" onclick="kbToggleShift()">⇧ Shift</button></div>
+  <div class="kb-keys" id="kbKeys"></div>
+  <div class="kb-actions"><button type="button" onclick="kbBackspace()">⌫ 지우기</button><button type="button" onclick="kbKey(' ')">띄어쓰기</button><button type="button" class="primary" onclick="kbClose(true)">확인 · 입력 적용</button></div>
+  <p class="muted">자음과 모음을 입력하면 완성형 한글로 조합됩니다. 확인을 누른 뒤 환경설정의 저장 버튼을 누르세요.</p>
+ </div>
+</div>
+
 <script>
+
+/* Self-contained Korean Dubeolsik touch IME: no system Korean keyboard required. */
+var kbTarget=null,kbMode="ko",kbShift=false,kbBase="",kbState={l:"",v:"",t:""},kbHistory=[];
+var KB_L="ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ".split("");
+var KB_V="ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ".split("");
+var KB_T=["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+var KB_JOIN_V={"ㅗㅏ":"ㅘ","ㅗㅐ":"ㅙ","ㅗㅣ":"ㅚ","ㅜㅓ":"ㅝ","ㅜㅔ":"ㅞ","ㅜㅣ":"ㅟ","ㅡㅣ":"ㅢ"};
+var KB_JOIN_T={"ㄱㅅ":"ㄳ","ㄴㅈ":"ㄵ","ㄴㅎ":"ㄶ","ㄹㄱ":"ㄺ","ㄹㅁ":"ㄻ","ㄹㅂ":"ㄼ","ㄹㅅ":"ㄽ","ㄹㅌ":"ㄾ","ㄹㅍ":"ㄿ","ㄹㅎ":"ㅀ","ㅂㅅ":"ㅄ","ㄱㄱ":"ㄲ","ㅅㅅ":"ㅆ"};
+var KB_SPLIT_T={"ㄳ":["ㄱ","ㅅ"],"ㄵ":["ㄴ","ㅈ"],"ㄶ":["ㄴ","ㅎ"],"ㄺ":["ㄹ","ㄱ"],"ㄻ":["ㄹ","ㅁ"],"ㄼ":["ㄹ","ㅂ"],"ㄽ":["ㄹ","ㅅ"],"ㄾ":["ㄹ","ㅌ"],"ㄿ":["ㄹ","ㅍ"],"ㅀ":["ㄹ","ㅎ"],"ㅄ":["ㅂ","ㅅ"],"ㄲ":["ㄱ","ㄱ"],"ㅆ":["ㅅ","ㅅ"]};
+function kbSyllable(st){if(st.l&&st.v){var a=KB_L.indexOf(st.l),b=KB_V.indexOf(st.v),c=KB_T.indexOf(st.t||"");if(a>=0&&b>=0&&c>=0)return String.fromCharCode(0xac00+(a*21+b)*28+c)}return (st.l||"")+(st.v||"")+(st.t||"")}
+function kbText(){return kbBase+kbSyllable(kbState)}
+function kbRefresh(){el("kbPreview").value=kbText();var max=kbTarget?+(kbTarget.getAttribute("maxlength")||40):40;el("kbPreview").maxLength=max}
+function kbCommit(){kbBase+=kbSyllable(kbState);kbState={l:"",v:"",t:""}}
+function kbWriteJamo(ch){var st=kbState,vowel=KB_V.indexOf(ch)>=0,consonant=KB_L.indexOf(ch)>=0;
+ if(!vowel&&!consonant){kbCommit();kbBase+=ch;return}
+ if(vowel){
+  if(st.t){var split=KB_SPLIT_T[st.t];if(split){st.t=split[0];var prev=kbSyllable(st);kbBase+=prev;kbState={l:split[1],v:ch,t:""}}else{var last=st.t;st.t="";kbBase+=kbSyllable(st);kbState={l:last,v:ch,t:""}}return}
+  if(st.v){var comb=KB_JOIN_V[st.v+ch];if(comb){st.v=comb;return}kbCommit();kbState={l:"ㅇ",v:ch,t:""};return}
+  st.v=ch;if(!st.l)st.l="ㅇ";return
+ }
+ if(!st.l){st.l=ch;return}
+ if(!st.v){kbCommit();kbState={l:ch,v:"",t:""};return}
+ if(!st.t&&KB_T.indexOf(ch)>=1){st.t=ch;return}
+ if(st.t){var joined=KB_JOIN_T[st.t+ch];if(joined&&KB_T.indexOf(joined)>=1){st.t=joined;return}}
+ kbCommit();kbState={l:ch,v:"",t:""};
+}
+function openKeyboard(input){if(!input)return;kbTarget=input;kbBase=input.value;kbState={l:"",v:"",t:""};kbHistory=[];kbShift=false;el("ebKeyboard").classList.add("open");kbModeSet("ko");kbRefresh()}
+function kbClose(apply){if(apply&&kbTarget){kbTarget.value=kbText();kbTarget.dispatchEvent(new Event("input",{bubbles:true}));kbTarget.dispatchEvent(new Event("change",{bubbles:true}))}el("ebKeyboard").classList.remove("open");kbTarget=null;kbHistory=[]}
+function kbModeSet(m){kbCommit();kbMode=m;kbShift=false;["ko","en","num"].forEach(function(x){el("kbMode"+x[0].toUpperCase()+x.slice(1)).classList.toggle("kb-on",x===m)});kbDraw();kbRefresh()}
+function kbToggleShift(){kbShift=!kbShift;kbDraw()}
+function kbDraw(){var layout=kbMode==="ko"?"ㅂㅈㄷㄱㅅㅛㅕㅑㅐㅔㅁㄴㅇㄹㅎㅗㅓㅏㅣㅋㅌㅊㅍㅠㅜㅡ":kbMode==="en"?"qwertyuiopasdfghjklzxcvbnm":"1234567890-+*/=.,:;()";
+ var keys=Array.from(layout);
+ if(kbMode==="ko"&&kbShift){var shifted={"ㅂ":"ㅃ","ㅈ":"ㅉ","ㄷ":"ㄸ","ㄱ":"ㄲ","ㅅ":"ㅆ","ㅐ":"ㅒ","ㅔ":"ㅖ"};keys=keys.map(function(c){return shifted[c]||c})}
+ if(kbMode==="en"&&kbShift)keys=keys.map(function(c){return c.toUpperCase()});
+ el("kbShift").classList.toggle("kb-on",kbShift);el("kbShift").disabled=kbMode==="num";
+ el("kbKeys").innerHTML=keys.map(function(k){return '<button type="button" data-kb="'+esc(k)+'" onclick="kbKey(this.getAttribute(\'data-kb\'))">'+esc(k)+'</button>'}).join("")}
+function kbKey(ch){if(!kbTarget)return;var old=kbText();kbHistory.push({base:kbBase,state:{l:kbState.l,v:kbState.v,t:kbState.t}});
+ if(kbMode==="ko"&&ch!==" ")kbWriteJamo(ch);else{kbCommit();kbBase+=ch}
+ if(Array.from(kbText()).length>+(kbTarget.getAttribute("maxlength")||40)){var prev=kbHistory.pop();kbBase=prev.base;kbState=prev.state}kbRefresh()}
+function kbBackspace(){if(!kbTarget)return;var prev=kbHistory.pop();if(prev){kbBase=prev.base;kbState=prev.state}else if(kbState.l||kbState.v||kbState.t){kbState={l:"",v:"",t:""}}else kbBase=Array.from(kbBase).slice(0,-1).join("");kbRefresh()}
+
 var selected=1;
 var names=[1,2,3,4,5].map(n=>n+"동");
 try{var stored=JSON.parse(localStorage.getItem("eb-house-names"));if(Array.isArray(stored)&&stored.length===5)names=stored.map((v,i)=>typeof v==="string"&&v.trim()?v.trim().slice(0,24):(i+1)+"동")}catch(e){}
