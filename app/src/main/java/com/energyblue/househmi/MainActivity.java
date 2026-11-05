@@ -32,7 +32,14 @@ public final class MainActivity extends Activity {
  private volatile boolean destroyed = false;
  @Override public void onCreate(Bundle b) { super.onCreate(b);
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-  browser=new WebView(this); browser.setWebViewClient(new WebViewClient()); browser.setWebChromeClient(new WebChromeClient());
+  browser=new WebView(this);
+  browser.setWebViewClient(new WebViewClient(){
+   @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !"file:///android_asset/index.html".equals(url);}
+   @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){
+    return !"file:///android_asset/index.html".equals(request.getUrl().toString());
+   }
+  });
+  browser.setWebChromeClient(new WebChromeClient());
   browser.getSettings().setJavaScriptEnabled(true);
   browser.getSettings().setDomStorageEnabled(true);
   browser.getSettings().setAllowFileAccess(true);
