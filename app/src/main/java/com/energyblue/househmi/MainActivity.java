@@ -70,6 +70,10 @@ public final class MainActivity extends Activity {
   }catch(Exception ignored){}
   return "IP 확인 불가 (Wi-Fi 연결 확인)";
  }
+ @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+  if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
+  super.onActivityResult(requestCode,resultCode,data);
+ }
  @Override protected void onDestroy(){SerialPort.close();destroyed=true;if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  public final class NativeDiagnostics {
   @JavascriptInterface public String probe(String path){
