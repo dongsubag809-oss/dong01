@@ -20,6 +20,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+      - name: Test HMI menu, WebView JS, and Korean input
+        run: node scripts/hmi-smoke-test.js
       - name: Validate update signing secrets
         env:
           KEYSTORE_B64: ${{ secrets.HMI_KEYSTORE_BASE64 }}
