@@ -77,4 +77,4 @@ jobs:
             echo "::error::Release $RELEASE_TAG already exists; refuse replacement"
             exit 1
           fi
-          gh release create "$RELEASE_TAG" dist/* --title "ENERGYBLUE HMI $RELEASE_TAG" --notes "IXP101H1 Android HMI update; SHA-256 attached; Android installation approval required."
+          gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "ENERGYBLUE HMI $RELEASE_TAG" --notes "IXP101H1 Android HMI update; SHA-256 attached; Android installation approval required."
