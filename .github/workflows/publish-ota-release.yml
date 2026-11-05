@@ -69,6 +69,32 @@ jobs:
           "$apksigner" verify --verbose "$output"
           (cd dist && sha256sum "ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk" > "ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk.sha256")
           rm -f "$RUNNER_TEMP/hmi-sign/signing.jks"
+      - name: Create single ZIP distribution with installation guide
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/hmi-package"
+          cp "dist/ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk" "$RUNNER_TEMP/hmi-package/"
+          cp "dist/ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk.sha256" "$RUNNER_TEMP/hmi-package/"
+          printf '%s\n' \
+            "ENERGYBLUE 5-DONG HMI ${RELEASE_TAG}" \
+            "V4.86: Korean keyboard and names; baseline running on HMI" \
+            "V4.87: legacy WebView navigation attempt; Play Protect warning unresolved" \
+            "V4.88: removed automatic update downloads; warning unresolved" \
+            "${RELEASE_TAG}: legacy JS compatibility, visible UI error diagnostics, and APK export without in-app installer" \
+            > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
+          printf '%s\n' \
+            "ENERGYBLUE IXP101H1 HMI ${RELEASE_TAG}" \
+            "1. Keep existing HMI app installed; do not clear its data." \
+            "2. The app does not install other APKs. User chooses where to export the SHA256-verified APK." \
+            "3. If Google Play Protect says Harmful app blocked, CANCEL installation. Do not disable protection." \
+            "4. The program does not send PLC control commands yet; COM5 port open remains a diagnostic only." \
+            "5. Check with the equipment administrator before testing with live outputs." \
+            "6. An Android HMI installation and Play Protect clearance have not been verified." \
+            > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
+          (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
+          unzip -t "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
