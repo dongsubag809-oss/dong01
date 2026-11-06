@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
  private final ExecutorService plcWorker=Executors.newSingleThreadExecutor();
  private final AtomicBoolean plcBusy=new AtomicBoolean(false);
  private final AtomicBoolean outputCommandPending=new AtomicBoolean(false);
+ private final AtomicBoolean armRequestPending=new AtomicBoolean(false);
  private final Object plcGuard=new Object();
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
@@ -169,7 +170,7 @@ public final class MainActivity extends Activity {
  private final Runnable plcAutoPoll=new Runnable(){
   @Override public void run(){
    if(destroyed)return;
-   if(!plcAutoPaused&&!outputCommandPending.get()&&plcBusy.compareAndSet(false,true)){
+   if(!plcAutoPaused&&!armRequestPending.get()&&!outputCommandPending.get()&&plcBusy.compareAndSet(false,true)){
     plcWorker.execute(()->{
      try{autoScanOnce();}
      finally{plcBusy.set(false);}
@@ -307,25 +308,35 @@ public final class MainActivity extends Activity {
   /** Fresh read and safety validation before enabling any output, count 1 or 2.
    * Output arming persists within current session and resets on failure.
    */
+  /** Manual output activation waits for ongoing automatic FC03 scans instead of
+   * rejecting while COM5 is busy. No output is sent during arming.
+   */
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
-   // No-load bench tests may target 1 or 2 physically present boards.
-   // The full actual FC03 CRC and safety configuration of each selected board
-   // must be verified before any outputs can be commissioned.
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
-    emit("plcArm","수동 출력 승인 실패: 보드 수량 또는 M0 모드 오류");return;
+    emit("plcArm","수동 시험 차단: 연결 보드 수 또는 M0 모드 오류");return;
    }
-   if(!plcBusy.compareAndSet(false,true)){
-    emit("plcArm","수동 출력 승인 대기 실패: COM5 송수신 중입니다.");return;
+   if(!armRequestPending.compareAndSet(false,true)){
+    emit("plcArm","PLC 출력 시험 승인 요청이 이미 진행 중입니다.");return;
    }
    final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
-   setActiveBoardCount(boardCount);
-   final long armingTicket;
-   synchronized(plcGuard){armingTicket=armSequence;}
-   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 재조회 및 안전 레지스터 검사 중 · 출력 잠금");
+   final long ticket;
+   synchronized(plcGuard){
+    armSequence++;
+    ticket=armSequence;
+    outputArmUntil=0;
+    noLoadMultiOutput=false;
+   }
+   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 자동 통신 완료 후 실제 상태 및 안전 설정 확인 중 · 현재 출력 잠금");
    plcWorker.execute(()->{
     String outcome;
+    plcBusy.set(true);
     try{
      if(destroyed||Thread.currentThread().isInterrupted())throw new java.io.IOException("통신 작업 중단");
+     synchronized(plcGuard){
+      if(ticket!=armSequence)throw new java.io.IOException("사용자가 시험 시작을 취소했습니다.");
+      activeBoardCount=boardCount;
+      lastGoodRead[0]=0;lastGoodRead[1]=0;
+     }
      for(int id=1;id<=boardCount;id++){
       int[] addrs=ModbusReadOnly.addresses(modes[id-1]);
       boolean[] dout=ModbusReadOnly.read64(id,addrs[0]);
@@ -336,18 +347,26 @@ public final class MainActivity extends Activity {
       notifyBoard(id,modes[id-1],di,dout);
      }
      synchronized(plcGuard){
-      if(armingTicket!=armSequence||destroyed)
-       throw new java.io.IOException("사용자가 시험 승인을 취소했거나 COM5 상태가 변경되었습니다");
+      if(ticket!=armSequence||destroyed)throw new java.io.IOException("시험 승인 취소 또는 통신 상태 변경");
       outputArmUntil=-1;
       noLoadMultiOutput=noLoadBench;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
-       (noLoadBench?" · 무부하 다채널 시험(다른 DO ON 허용)":" · 단일 DO 시험(동시 ON 차단)")+
-       " · 시험 잠금/통신 장애/앱 종료 시까지 유효";
+       (noLoadBench?" 무부하 다채널 자유 ON/OFF":" 일반 단일 채널")+
+       " · 시험 잠금/통신 장애/앱 종료까지 유지";
     }catch(Exception ex){
-     synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
-     outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
-    }finally{plcBusy.set(false);}
+     synchronized(plcGuard){
+      if(ticket==armSequence){
+       outputArmUntil=0;noLoadMultiOutput=false;
+       lastGoodRead[0]=0;lastGoodRead[1]=0;
+       armSequence++;
+      }
+     }
+     outcome="수동 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
+    }finally{
+     plcBusy.set(false);
+     armRequestPending.set(false);
+    }
     emit("plcArm",outcome);
    });
   }
