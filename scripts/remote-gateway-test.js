@@ -7,7 +7,7 @@ const mobile=fs.readFileSync("app/src/main/assets/mobile.html","utf8");
 const manifest=fs.readFileSync("app/src/main/AndroidManifest.xml","utf8");
 assert(java.includes('SSLServerSocket')&&java.includes('"TLSv1.2"'),"Mobile listener must use TLS 1.2");
 assert(java.includes('"AndroidKeyStore"')&&java.includes("KeyPairGeneratorSpec"),"TLS key must remain generated on physical HMI");
-assert(!java.includes("ServerSocket(PORT")&&java.includes("createServerSocket(PORT"),"Plaintext listener forbidden");
+assert(!java.includes("new ServerSocket(")&&java.includes("tls.getServerSocketFactory().createServerSocket(PORT"),"Plaintext listener forbidden");
 assert(java.includes("random.nextInt(1000000)")&&java.includes("codeExpiry=System.currentTimeMillis()+300000"),"Secure one-time pairing code");
 assert(java.includes("failedPairs>=5")&&java.includes("pairLockUntil"),"Pairing brute-force protection");
 assert(java.includes("tokenExpiry=now+2*60*60*1000L")&&java.includes("MessageDigest.isEqual"),"Session expiration and constant-time compare");
