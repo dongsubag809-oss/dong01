@@ -167,4 +167,41 @@ assert(node("manualRawChannels").innerHTML.includes("DI64 OFF"),"Real ID1 manual
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:false,detail:"TIMEOUT"})}));
 assert(!node("manualRawChannels").innerHTML.includes("DO64 OFF"),"Stale DO must disappear after PLC disconnect");
 assert(node("plcLink1").textContent.includes("미연결"),"Disconnected status indicator did not update");
+// Historic N4D4F64 24-DO/house addressing: sequential across 64-channel board boundary.
+assert.strictEqual(ctx.mappedOutputs.length,24,"Each house has exactly 24 real DO mappings");
+const seen={};
+for(var h=1;h<=5;h++)for(var k=0;k<24;k++){
+ var a=ctx.assignedOutput(h,k),key=a.id+"-"+a.ch;
+ assert(!seen[key],"Mapped channel duplicated "+key);
+ seen[key]=true;
+ assert.strictEqual((a.id-1)*64+a.ch,(h-1)*24+k+1,"Historical sequential DO address incorrect");
+}
+assert.strictEqual(Object.keys(seen).length,120,"Five houses must use 120 distinct DO");
+assert.strictEqual(ctx.assignedOutput(3,15).id,1,"House 3 first 16 on ID1");
+assert.strictEqual(ctx.assignedOutput(3,16).id,2,"House 3 final 8 on ID2");
+assert.strictEqual(ctx.assignedOutput(5,23).ch,56,"House 5 final output ID2 DO56");
+for(var spare=57;spare<=64;spare++)
+ assert(ctx.defaultDoName(2,spare).includes("예비 출력"),"Unused ID2 outputs must be identified");
+assert(ctx.defaultDoName(1,9).includes("내측창 좌측 열림"),"Real inner-window address absent");
+assert(ctx.doLabel(1,0).includes("DO09")&&ctx.doLabel(1,0).includes("DO10"),"Legacy device text must show mapped DO");
+assert(!ctx.doLabel(1,0).includes("미배정"),"Legacy unmapped warning remains");
+ctx.doRegistry["1-9"]="내측 좌측 맞춤 이름";
+assert.strictEqual(ctx.assignedDoName(1,9),"내측 좌측 맞춤 이름","User-customized 128-channel label not applied");
+ctx.doRegistry["1-9"]="";// clear test override; original user edits remain persisted via localStorage
+assert(html.includes('readonly onclick="openKeyboard(this)"'),"Korean editable DO name fields must remain");
+ctx.selected=1;
+ctx.renderMappedHouse();
+assert(node("manualControls").innerHTML.includes("ID 1 / DO09"),"Mapped HMI device card missing exact PLC address");
+assert(node("manualControls").innerHTML.includes("manualMappedOutput(1,8,true)"),"Mapped device ON button is not wired");
+assert(node("manualControls").innerHTML.includes("manualMappedOutput(1,8,false)"),"Mapped device OFF button is not wired");
+assert(node("manualControls").innerHTML.includes("disabled"),"Unknown board connection must not enable physical outputs");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:true,detail:"CRC OK"})}));
+ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
+ctx.renderMappedHouse();
+assert(!node("manualControls").innerHTML.includes("DO 결선 미배정"),"Legacy unmapped output labels must not appear");
+const nativeController=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
+assert(!nativeController.includes("noLoadBench&&boardCount!=1"),"ID2 bench mode must not be arbitrarily blocked");
+assert(nativeController.includes("outputCommandPending.compareAndSet(false,true)"),"Manual output must queue during automatic scan");
+assert(nativeController.includes("!outputCommandPending.get()"),"Automatic polls must yield to pending output");
+assert(nativeController.includes("noLoadMultiOutput"),"No-load mode lifetime must remain session-scoped");
 console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded one-board ID1 test plus optional two-board DO taps and real readback.");
