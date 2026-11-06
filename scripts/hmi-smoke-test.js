@@ -13,7 +13,8 @@ function node(id){
   id,value:id==="editHouse"||id==="doPlcId"?"1":"",
   children:[],innerHTML:"",textContent:"",scrollTop:0,
   classList:{toggle(){},add(){},remove(){}},
-  getAttribute(){return null}
+  setAttribute(name,value){this[name]=value;},
+  getAttribute(name){return this[name]||null;}
  };
  return nodes[id];
 }
@@ -160,6 +161,21 @@ assert(native.includes("ModbusOutput.writeOnce")&&native.includes("ModbusReadOnl
 assert(!native.includes("noLoadMultiOutput")&&!native.includes("noLoadTestAuthorized"),"Unsafe bypass/test authorization remains");
 assert(!native.includes("otherOutputActive("),"Unrelated single DO outputs must not block each other");
 assert(native.includes("for(int id=1;id<=2;id++)"),"Automatic two-board status monitoring missing");
+// HMI phone access mode backgrounds reflect actual server status, never the last click.
+assert(html.includes('id="phoneMonitorButton"')&&html.includes('id="phoneControlButton"')&&html.includes('id="phoneStopButton"'),"Phone-mode buttons must have stable DOM identifiers");
+assert(html.includes("button.phone-selected.monitor{background:#167147"),"Selected monitor must fill green");
+assert(html.includes("button.phone-selected.control{background:#176aad"),"Selected control must fill blue");
+assert(html.includes("button.phone-selected.stopped{background:#80512c"),"Selected OFF must have distinct background");
+ctx.displayPhoneDetails(JSON.stringify({enabled:false}));
+assert(node("phoneStopButton").className.includes("phone-selected"),"Disconnected phone mode must select stopped");
+ctx.displayPhoneDetails(JSON.stringify({enabled:true,allowControl:false,port:18443,pairCode:"123456",certificateSha256:"ABCD"}));
+assert(node("phoneMonitorButton").className.includes("phone-selected")&&!node("phoneControlButton").className.includes("phone-selected"),"Monitoring mode must select monitoring only");
+assert.strictEqual(node("phoneMonitorButton").getAttribute("aria-pressed"),"true","Monitor selection accessible");
+ctx.displayPhoneDetails(JSON.stringify({enabled:true,allowControl:true,port:18443,pairCode:"123456",certificateSha256:"ABCD"}));
+assert(node("phoneControlButton").className.includes("phone-selected")&&!node("phoneMonitorButton").className.includes("phone-selected"),"Actual control mode must select control instead of monitor");
+ctx.displayPhoneDetails("원격 HTTPS 시작 실패: TLS");
+assert(node("phoneStopButton").className.includes("phone-selected"),"Server failure must never appear active");
+assert(node("phoneStatus").textContent.includes("원격 HTTPS 시작 실패"),"Show original TLS failure on screen");
 // Always-visible red emergency button, developer attribution, and physical-result acknowledgement.
 assert(html.includes("개발자:박동수"),"Developer attribution missing from header");
 assert(html.includes('id="emergencyButton"')&&html.includes('onclick="requestEmergencyStop()"'),"Header emergency button missing");
