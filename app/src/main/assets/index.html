@@ -226,7 +226,7 @@ function tapDo(id,ch){
  var state=plcDoStates[id],msg=el('plcReadLog');
  if(id>selectedPlcCount()){msg.textContent='ID '+id+' · 미연결: 선택한 보드 수량 밖의 출력은 차단됩니다.';return;}
  if(!state||state.length!==64){msg.textContent='ID '+id+' DO 상태가 미수신입니다. 먼저 읽기 실행';return;}
- if(!plcArmed||Date.now()>plcArmDeadline){plcArmed=false;msg.textContent='출력 잠금: 상단 안전 확인 체크 → 수동 DO 시험 활성화 → PLC 재조회 승인(ARM_OK)을 먼저 확인하세요.';return;}
+ if(!plcArmed||(plcArmDeadline>0&&Date.now()>plcArmDeadline)){plcArmed=false;msg.textContent='출력 잠금: 상단 안전 확인 체크 → 수동 DO 시험 활성화 → PLC 재조회 승인(ARM_OK)을 먼저 확인하세요.';return;}
  if(plcCommandBusy){msg.textContent='이전 출력 명령 처리 중입니다.';return;}
  var on=state.charAt(ch-1)!=='1',mode=el('plcMode'+id).value;
  var label=on?'ON · 실제 출력 구동':'OFF · 출력 정지';
@@ -296,7 +296,7 @@ window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='pl
  var armMessage=p.message||'';
  var authorized=armMessage.indexOf('ARM_OK')===0;
  plcArmed=authorized;
- plcArmDeadline=authorized?Date.now()+60000:0;
+ plcArmDeadline=authorized?(el('plcTestMode').value==='bench'?-1:Date.now()+60000):0;
  el('plcArmStatus').textContent=armMessage;
  if(!authorized)el('plcReadLog').textContent=armMessage;
  return;
