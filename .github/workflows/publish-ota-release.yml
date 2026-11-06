@@ -113,7 +113,8 @@ jobs:
             "V4.98: historical 24DO per house mapping across 120 channels and 8 spare, editable Korean output names" \
             "V4.99: include verified 128-channel CSV and independent no-load greenhouse/manual DO tests" \
             "V5.00: manual output activation indicator and queued COM5 arming" \
-            "${RELEASE_TAG}: production-only HMI; remove no-load/virtual test UI; vertical motor OPEN STOP CLOSE; native forward/reverse interlock with 0.5s delay and real DO readback; 128 editable DO labels preserved" \
+            "V5.01: actual-output HMI, three-button motor control and software forward/reverse 0.5s interlock" \
+            "${RELEASE_TAG}: dashboard each house updates from actual CRC-verified PLC ID1/ID2 link; green 통신 양호 only for all required boards, disconnected/unknown states distinct" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
