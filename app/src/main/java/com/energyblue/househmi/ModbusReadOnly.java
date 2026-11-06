@@ -68,11 +68,18 @@ public final class ModbusReadOnly {
   for(int i=0;i<count;i++)result[i]=((response[3+i*2]&255)<<8)|(response[4+i*2]&255);
   return result;
  }
- public static boolean safetyConfigAllowsManual(int slave)throws IOException{
+ /** Returns a concrete block reason, or null when commissioning writes are permitted. */
+ public static String safetyProblem(int slave)throws IOException{
   int[] remote=parseWords(slave,4,SerialPort.exchangeRead(readWordsRequest(slave,245,4)));
   int[] relation=parseWords(slave,1,SerialPort.exchangeRead(readWordsRequest(slave,250,1)));
-  // Exactly the existing Windows/Raspberry Pi n4d4f64.py write_allowed gate.
-  return remote[0]==0&&remote[1]==0&&remote[3]==0&&relation[0]==0;
+  // Do not bypass the exact guard from previously working n4d4f64.py.
+  if(remote[0]==0&&remote[1]==0&&remote[3]==0&&relation[0]==0)return null;
+  return "ID "+slave+" 연동/출력 관계 설정 차단: R245="+remote[0]+
+   ", R246="+remote[1]+", R247="+remote[2]+
+   ", R248="+remote[3]+", R250="+relation[0];
+ }
+ public static boolean safetyConfigAllowsManual(int slave)throws IOException{
+  return safetyProblem(slave)==null;
  }
  public static boolean[] read64(int slave,int address)throws IOException{
   return parse64(slave,SerialPort.exchangeRead(request(slave,address)));
