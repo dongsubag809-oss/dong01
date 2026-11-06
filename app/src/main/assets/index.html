@@ -64,6 +64,16 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 #manualRawChannels .plc-ch{min-height:48px}
 
 @media(max-width:730px){.plc-ch-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.motor-control{border:1px solid #406b79;background:#112d3a;border-radius:12px;padding:12px;min-width:0}
+.motor-actions{display:flex;flex-direction:column;gap:7px;margin:9px 0}
+.motor-actions button{width:100%;margin:0;min-height:49px;font-size:16px}
+.motor-actions .up{background:#1c6d67}.motor-actions .stop{background:#805522;border-color:#e3b86b}
+.motor-actions .down{background:#345c86}.motor-actions button.active{border:2px solid #b6e9de}
+.motor-state{font-weight:bold;color:#b5ebd0}
+.onoff-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.onoff-actions button{min-height:48px;margin:0;font-size:15px}
+@media(max-width:730px){.controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.controls{grid-template-columns:1fr}}
 </style></head>
 <body><div id="hmiFault" role="status" style="display:none;position:fixed;z-index:99998;bottom:5px;left:6px;right:6px;padding:7px;background:#651b1b;color:#fff;font-size:13px;max-height:75px;overflow:auto;border:1px solid #ff8a8a"></div><script>window.onerror=function(msg,src,line,col){var box=document.getElementById("hmiFault");if(box){box.style.display="block";box.textContent="HMI 화면 오류: "+msg+" (행 "+line+")";}return false;};</script><header><div><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · PLC ID 1·2 자동 접속·상태 감시</div></div><div class="status"><span id="plcHeaderStatus">● PLC ID1·2 검색 중</span> <span id="clock"></span><br><span class="sub">HMI V<span id="version">확인 중</span> · IP <span id="ip">확인 중</span></span></div></header>
 <div class="shell"><nav>
@@ -80,24 +90,15 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <div class="grid2"><div class="panel"><h3>전체 시스템 상태</h3><div class="row"><span class="badge" id="dashPlc1">ID 1 확인 중</span><span class="badge" id="dashPlc2">ID 2 확인 중</span><span class="badge">COM6 센서 미연결</span></div><p class="muted" style="margin-top:12px">PLC ID 1·2의 실제 DI·DO 64점씩 자동 조회 · 설정되지 않은 장비별 DO 매핑은 동작하지 않습니다</p></div><div class="panel"><h3>긴급 안내</h3><p class="warn">PLC 개별 DO 수동제어는 실제 통신을 사용합니다. 창문·펌프 등 장비별 DO와 DI 리미트 결선이 확인될 때까지 장비 자동제어·스케줄 버튼은 비활성입니다.</p><p class="muted">실제 비상정지 회로는 HMI와 독립된 하드웨어로 구성해야 합니다.</p></div></div>
 </section>
 <section id="names" class="page"><h2>환경설정 · 사용자 이름 변경</h2><p class="muted">하우스 5개 이름과 각 하우스의 제어 접점 표시 이름을 자유롭게 변경합니다. 이름만 변경하며 PLC 주소와 출력 동작은 변경되지 않습니다. PLC ID 1과 ID 2의 DO01~DO64 총 128점은 고정 주소이며, 사용자 지정 이름만 변경됩니다. 장비별 실제 결선은 배선표 확인 전까지 임의 배정하지 않습니다.</p><div class="panel"><h3>하우스 이름</h3><div id="nameFields"></div><button class="primary" onclick="saveNames()">하우스 이름 저장</button><p id="nameStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>제어 접점 이름 및 DO 출력 표시</h3><label>설정할 하우스 <select id="editHouse" onchange="renderContactFields()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><div id="contactFields"></div><button class="primary" onclick="saveContactNames()">접점 이름 저장</button> <button onclick="resetContactNames()">이 동의 접점 이름 초기화</button><p id="contactStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>PLC 출력 주소 목록 · 총 128DO</h3><p class="muted">ID 1 / DO01~DO64, ID 2 / DO01~DO64. 주소는 변경 불가, 표시 이름만 편집 가능합니다. 이름을 입력해도 실제 장비 배선은 자동 변경되지 않습니다.</p><div class="row"><label>PLC ID <select id="doPlcId" onchange="renderDoRegistry()"><option value="1">ID 1</option><option value="2">ID 2</option></select></label></div><div id="doRegistry"></div><button class="primary" onclick="saveDoRegistry()">출력 이름 저장</button><p id="doRegistryStatus" class="muted"></p></div></section><section id="manual" class="page"><h2>수동 제어 <span class="badge" id="manualOutputBadge">출력 잠금</span></h2>
-<div class="plc-safety" style="margin:12px 0">
-<strong>수동 출력 활성화 · PLC 실제 응답 기준</strong>
-<p class="warn">부하 미연결 시험만 허용: 모터·펌프·릴레이 등 외부 장비가 실제 DO 단자에 연결되어 있지 않은 경우에 사용하세요. 연결 시 일반 운전 안전 모드로 전환해야 합니다.</p>
-<label><input type="checkbox" id="manualNoLoadAck" onchange="if(!this.checked)stopManualBench()"> 현재 PLC 출력 단자에 외부 부하가 연결되지 않았음을 확인합니다.</label>
-<div class="row">
-<button type="button" class="primary" onclick="startManualBench()">무부하 출력시험 시작</button>
-<button type="button" onclick="stopManualBench()">출력 시험 잠금</button>
-</div>
-<p class="muted" id="manualOutputStatus">PLC ID 1·2 자동 연결 대기 · 출력 잠금</p>
-<p class="muted">시험을 시작하면 연결된 보드만 확인한 후 ARM_OK를 표시합니다. 60초 제한이나 채널별 확인창은 없습니다. 연결 오류·시험 잠금·앱 종료 시 종료됩니다.</p>
-</div><div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">기존 24DO/동 배정표 적용 · 모터 정·역·DI 리미트 실제 결선은 현장 확인 필요</span></div><div class="controls" id="manualControls"></div>
-<div class="panel" style="margin-top:16px"><h3>하우스 장비별 DO 제어 및 전체 채널 · 실수신 기준</h3>
-<p class="muted">ID 1 DO01~64, ID 2 DO01~64의 고정 주소입니다. 각 채널 이름은 환경설정에서 수정할 수 있습니다. 5동 24DO/동의 기존 설계 주소는 연결했지만 실제 외부 결선 일치는 현장 확인이 필요합니다. 현재 연결 상태가 확인된 PLC만 시험할 수 있습니다.</p>
-<div class="row"><label>PLC 보드 <select id="manualRawId" onchange="renderRawManual()"><option value="1">ID 1 · DO01~64</option><option value="2">ID 2 · DO01~64</option></select></label>
-<button onclick="show('io')">I/O · 출력 시험 설정</button></div>
-<p id="manualRawStatus" class="muted">PLC 자동 연결 대기</p>
-<div id="manualRawChannels"></div>
-</div></section>
+<div class="panel" style="margin:12px 0"><div class="row"><strong>PLC 실제 수동 운전</strong><button type="button" class="primary" onclick="activateManualControl()">수동 운전 활성</button><button type="button" onclick="lockManualControl()">운전 잠금</button></div>
+<p id="manualOutputStatus" class="muted">PLC ID 1·2 실제 연결 확인 후 수동 운전을 활성화할 수 있습니다.</p>
+<p class="warn">모터 방향 전환은 0.5초 인터록을 적용합니다. 실제 비상정지 회로와 모터 리미트 스위치의 현장 검증이 필요합니다. 화면의 정지는 비상정지가 아닙니다.</p></div>
+<div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">5동 × 24DO 설계 주소 · 실제 결선 대조 필요</span></div>
+<div class="controls" id="manualControls"></div>
+<div class="panel" style="margin-top:16px"><h3>PLC 128DO 실제 상태 및 개별 제어</h3>
+<p class="muted">ID 1/2의 실제 DO 수신 상태를 표시합니다. 출력 이름은 환경설정에서 수정할 수 있습니다. 모터 정·역 접점은 인터록으로 보호됩니다.</p>
+<div class="row"><label>PLC 보드 <select id="manualRawId" onchange="renderRawManual()"><option value="1">ID 1 · DO01~64</option><option value="2">ID 2 · DO01~64</option></select></label><button type="button" onclick="show('io')">PLC 상태/통신</button></div>
+<p id="manualRawStatus" class="muted">PLC 자동 연결 대기</p><div id="manualRawChannels"></div></div></section>
 <section id="auto" class="page"><h2>자동 제어 조건 설정</h2><p class="warn">온습도·창문·환풍기 조건 설정 화면 초안입니다. 제어 로직 연결 전까지 저장/출력되지 않습니다.</p><div class="grid2"><div class="panel"><h3>온도 운전</h3><table><tr><td>환기 시작 온도</td><td>설정 전</td></tr><tr><td>환기 정지 온도</td><td>설정 전</td></tr><tr><td>난방 시작 온도</td><td>설정 전</td></tr><tr><td>난방 정지 온도</td><td>설정 전</td></tr></table></div><div class="panel"><h3>제어 보호 조건</h3><table><tr><td>열림/닫힘 상호 인터록</td><td>검증 전</td></tr><tr><td>방향 변경 지연</td><td>0.5초 설계 기준</td></tr><tr><td>센서 통신 상실</td><td>정책 결정 필요</td></tr><tr><td>상한/하한 리미트</td><td>DI 맵 검증 필요</td></tr></table></div></div></section>
 <section id="schedule" class="page"><h2>예약 운전 스케줄</h2><p class="muted">동별 스케줄 등록 및 시간 중복 처리 기능은 PLC 제어 로직 통합 시 연결됩니다.</p><table><thead><tr><th>예약 항목</th><th>적용 대상</th><th>상태</th></tr></thead><tbody id="schedules"></tbody></table></section>
 <section id="env" class="page"><h2>환경 모니터링</h2><div class="tiles" id="sensors"></div><div class="panel" style="margin-top:12px"><h3>센서 통신</h3><p>COM6 · 온습도·토양 센서 RS-485 예정</p><p class="warn">실측 통신 전까지 온도·습도·토양 값은 ‘미수신’으로만 표시합니다.</p></div></section>
@@ -106,26 +107,17 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <div class="row" style="margin:10px 0"><strong>PLC 상태:</strong><span id="plcLink1">ID 1 · 확인 중</span><span id="plcLink2">ID 2 · 확인 중</span></div>
 <p class="muted">프로그램 시작 후 자동으로 COM5를 열고 ID 1·2의 실제 응답을 확인합니다. 미연결 상태는 출력 ON/OFF 요청 불가이며, 연결이 복구되면 자동으로 다시 읽습니다. 재접속으로 DO가 자동 구동되지는 않습니다.</p>
 <div class="muted" id="plcPortStatus">COM5 자동 연결 대기</div>
-<div class="plc-read-panel"><h3>N4D4F64 실수신 모니터 · 수동 1채널 시험</h3>
-<p class="muted">COM5 포트를 연 뒤 현재 연결된 보드 수를 선택하세요. 1장 모드에서는 ID 1만 읽고 시험하며, ID 2로는 요청을 송신하지 않습니다. 2장 모드는 실제 보드 추가 후 선택하세요.</p>
-<div class="row"><label>연결된 PLC 보드 <select id="plcBoardCount" onchange="plcBoardCountChanged()"><option value="1" selected>1장 · ID 1만 시험</option><option value="2">2장 · ID 1+2 연결</option></select></label>
-<label>ID 1 모드 <select id="plcMode1" onchange="savePlcCommModes()"><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label>
-<label>ID 2 모드 <select id="plcMode2" onchange="savePlcCommModes()" disabled><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label></div>
-<button class="primary" onclick="readBothPlcs()" style="margin-top:10px">선택 PLC 실제 데이터 읽기</button>
-<div class="plc-safety">
-<strong>실제 출력 시험 · 부하 미연결 상태를 먼저 확인하세요</strong>
-<div class="row"><label>시험 종류 <select id="plcTestMode" onchange="disarmDoTest()"><option value="single">단일 채널 출력 시험</option><option value="bench">부하 미연결 보드 시험</option></select></label></div>
-<p class="warn">출력은 실제 장비를 작동시킬 수 있습니다. 결선표, 외부 비상정지, 모터 리미트 스위치와 작업자 안전을 확인하세요. 실제 모터·펌프 부하가 연결된 채널은 회로 검증 전 ON하지 마세요.</p>
-<label><input type="checkbox" id="plcSafetyAck" onchange="if(!this.checked)disarmDoTest()"> 현장 출력 결선을 확인했습니다. 무부하 시험 모드에서는 출력 단자에 모터·펌프·장비가 연결되지 않았습니다. (앱 재시작 시 해제)</label>
-<div class="row"><button type="button" onclick="armDoTest()">선택한 DO 시험 시작</button>
-<button type="button" onclick="disarmDoTest()">시험 잠금</button></div>
-<p id="plcArmStatus" class="plc-arm-status">출력 잠금 · COM5 OPEN_OK 확인 후 시험 방식을 선택하고 [선택한 DO 시험 시작]을 누르세요. 수동 출력시험은 60초 제한 없이 유지되며, 시험 잠금·통신 오류·앱 종료 시 해제됩니다.</p>
-<p class="muted">부하 미연결 보드 시험은 복수 DO를 독립적으로 ON/OFF할 수 있고, 채널 터치마다 별도 확인창이 뜨지 않습니다. 일반 단일 출력 시험은 기존 ON 제한을 유지합니다. PLC 송수신·CRC 검사는 두 모드 모두 유지합니다.</p>
-</div>
-<p class="warn">DO 색상은 PLC가 보고한 상태이며, 전압·모터 동작의 실측 확인값은 아닙니다. 출력 명령은 응답 CRC와 DO 재수신 확인 후에만 성공으로 표시합니다.</p>
-<div class="log" id="plcReadLog">프로그램이 COM5 자동 연결 및 ID 1·2 실측값 수신을 시작합니다.</div>
-<div id="plcReadResults"><div class="plc-board" id="plcBoard1">ID 1 · 미수신</div><div class="plc-board" id="plcBoard2">ID 2 · 미연결 · 시험 제외</div></div>
-</div></div><div class="panel"><h3>안전 기본값</h3><p class="warn">실기기 구동 미허용</p><p>모터 정·역 동시 출력 금지, 0.5초 인터록, DI 리미트 확인, 통신 상실 시 안전정지 등은 PLC 실기 검증 후 승인해야 합니다.</p><p class="muted">COM5 장치 경로는 HMI에서 OPEN_OK가 확인된 값을 우선 사용하세요. 실제 PLC 응답은 아직 별도 검증이 필요합니다.</p></div></div><div class="panel" style="margin-top:12px"><h3>예정 I/O 채널 매핑</h3><table><tr><th>장치 분류</th><th>대상</th><th>상태</th></tr><tr><td>창문 / 그늘막</td><td>5개동 내외측 창문, 좌·우 그늘막</td><td>미배정</td></tr><tr><td>환풍기 / 바닥 환풍기</td><td>동별 송풍</td><td>미배정</td></tr><tr><td>조명 / 열풍기</td><td>동별 제어</td><td>미배정</td></tr><tr><td>관수 / 양액</td><td>공통 혼합기 + 동별 밸브</td><td>미배정</td></tr></table></div></section>
+<div class="plc-read-panel"><h3>N4D4F64 실제 DI/DO 수신 상태</h3>
+<p class="muted">COM5 자동 통신으로 PLC ID 1·2의 실제 접점 상태를 표시합니다. 출력 조작은 수동제어 메뉴에서 실행합니다.</p>
+<div class="row"><label>연결 보드 <select id="plcBoardCount" onchange="plcBoardCountChanged()"><option value="1" selected>1장 · ID 1</option><option value="2">2장 · ID 1+2</option></select></label>
+<label>ID 1 M0 <select id="plcMode1" onchange="savePlcCommModes()"><option value="default">M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label>
+<label>ID 2 M0 <select id="plcMode2" onchange="savePlcCommModes()" disabled><option value="default">M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label>
+<button type="button" onclick="readBothPlcs()">실제 상태 새로 읽기</button></div>
+<p id="plcArmStatus" class="muted">수동제어 화면에서 운전 상태를 확인하세요.</p>
+<p class="muted">DO는 PLC가 회신한 상태이며 실제 모터 위치 또는 단자 전압의 측정값은 아닙니다.</p>
+<div class="log" id="plcReadLog">PLC 실제 데이터 수신 대기</div>
+<div id="plcReadResults"><div class="plc-board" id="plcBoard1">ID 1 · 수신 대기</div><div class="plc-board" id="plcBoard2">ID 2 · 미연결</div></div>
+</div></div><div class="panel"><h3>안전 기본값</h3><p class="warn">실제 수동운전 보호 조건</p><p>정·역 출력의 동시 ON은 차단하며, 방향 전환에 0.5초 대기 시간을 적용합니다. DI 리미트 및 하드웨어 비상정지의 현장 시험은 별도로 필요합니다.</p><p class="muted">COM5 장치 경로는 HMI에서 OPEN_OK가 확인된 값을 우선 사용하세요. 실제 PLC 응답은 아직 별도 검증이 필요합니다.</p></div></div><div class="panel" style="margin-top:12px"><h3>예정 I/O 채널 매핑</h3><table><tr><th>장치 분류</th><th>대상</th><th>상태</th></tr><tr><td>창문 / 그늘막</td><td>5개동 내외측 창문, 좌·우 그늘막</td><td>미배정</td></tr><tr><td>환풍기 / 바닥 환풍기</td><td>동별 송풍</td><td>미배정</td></tr><tr><td>조명 / 열풍기</td><td>동별 제어</td><td>미배정</td></tr><tr><td>관수 / 양액</td><td>공통 혼합기 + 동별 밸브</td><td>미배정</td></tr></table></div></section>
 <section id="update" class="page"><h2>Wi-Fi 프로그램 업데이트</h2><p class="muted">GitHub 정식 APK를 Wi-Fi로 내려받아 SHA-256을 검증합니다. Android 7.1 HMI에서는 설치 승인 화면을 열고, Android 8 이상에서는 파일 저장 후 설치합니다. 사용자 승인 없이 설치하지 않습니다.</p><div class="row"><button class="primary" onclick="call('checkUpdate')">1. 업데이트 검색</button><button onclick="call('downloadUpdate')">2. 새 APK 다운로드</button><button onclick="call('installUpdate')">3. 설치 승인</button><button onclick="refreshIp()">IP 새로고침</button></div><div class="log" id="updateStatus" style="margin-top:16px">새 버전을 검색하려면 업데이트 검색을 누르세요.</div><p class="warn">PLC 운전 중에는 APK 설치를 수행하지 마세요. Play Protect 차단 경고가 나타나면 설치를 취소하고 관리자에게 확인하세요.</p><p class="muted">HMI LAN 자동검색 UDP 포트: 38541</p><p class="muted">진행 순서: 업데이트 검색 → APK 다운로드 및 SHA-256 확인 → 설치 승인. Android 설치 권한 승인 요청이 나타나면 해당 권한을 확인한 뒤 설치 승인을 다시 누르세요. Play Protect 경고를 우회하지 않습니다.</p></section>
 </main></div>
 <div id="ebKeyboard" role="dialog" aria-modal="true" aria-label="이름 입력 터치 키보드">
