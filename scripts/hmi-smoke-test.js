@@ -56,9 +56,10 @@ assert(html.includes("call('installUpdate')"),"HMI install button callback is mi
 assert(updater.includes("FileProvider.getUriForFile"),"User-approved verified APK URI is missing");
 assert(updater.includes("Intent.ACTION_VIEW"),"Android installer intent is missing");
 assert(updater.includes("Intent.FLAG_GRANT_READ_URI_PERMISSION"),"Android temporary APK read permission missing");
-assert(updater.includes("canRequestPackageInstalls()"),"Android 8+ unknown-source install permission check missing");
-assert(!updater.includes("ACTION_CREATE_DOCUMENT")&&!updater.includes("onExportResult"),"Obsolete save-only OTA flow remains");
-assert(manifest.includes("android.permission.REQUEST_INSTALL_PACKAGES"),"User-approved install permission missing");
+assert(!updater.includes("canRequestPackageInstalls()"),"Undeclared install permission may not be requested");
+assert(updater.includes("if(android.os.Build.VERSION.SDK_INT>=26)"),"Android 7 vs 8 installer branch missing");
+assert(updater.includes("ACTION_CREATE_DOCUMENT")&&updater.includes("onExportResult"),"Android 8+ manual file-export fallback missing");
+assert(!manifest.includes("android.permission.REQUEST_INSTALL_PACKAGES"),"V4.90 working baseline does not request APK installer permission");
 assert(manifest.includes("androidx.core.content.FileProvider"),"APK FileProvider missing");
 assert(manifest.includes('android:exported="false"'),"APK provider must not be exported");
 assert(paths.includes('path="ota/"'),"Restricted verified APK cache mapping missing");
