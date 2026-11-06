@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('fs'),vm=require('vm'),assert=require('assert');const source=fs.readFileSync('app/src/main/assets/sensor.js','utf8');assert(!/\b(?:let|const)\s+[A-Za-z_$]|=>|\.padStart\s*\(/.test(source));
+const nodes={},calls=[];function node(id){return nodes[id]||(nodes[id]={value:'',textContent:'',innerHTML:'',disabled:false,checked:false});}
+let rows=[1,2,3,4,5].map(h=>({house:h,config:{house:h,path:'/dev/ttyS6',baud:9600,id:h,fc:3,map:'h0t1',verified:true,enabled:true},connected:true,registered:true,temperature:20+h/10,humidity:50+h/10,receivedAt:Date.now()}));
+let data={...rows[0],houses:rows,selected:1,setup:0,pending:null,searching:false,devices:['/dev/ttyS6','/dev/ttyS7']};
+const bridge={sensorInfo:()=>JSON.stringify(data)};for(const name of ['configureSensor','selectSensorHouse','beginSensorSetup','searchSensor','cancelSensorSearch','stopSensor','changeSensorId','changeSensorBaud','verifySensorChange','restoreSensorOld','finishSensorSetup','leaveSensorSetup','confirmSensorMap'])bridge[name]=function(){calls.push([name,...arguments]);};
+const ctx=vm.createContext({window:{NativeDiagnostics:bridge},document:{getElementById:node},setInterval(){},Date,JSON});vm.runInContext(source,ctx);const api=ctx.window.EBSensor;api.init();
+for(let h=1;h<=5;h++)assert.equal(node('houseTemperature'+h).textContent,(20+h/10).toFixed(1)+' °C');assert.equal(node('dashSensor').textContent,'COM6 센서 5/5동 수신');assert(node('sensorId').disabled);
+api.selectHouse(5);assert(calls.some(c=>c[0]==='selectSensorHouse'&&c[1]===5));data={...data,...rows[4],selected:5};api.receive(data);api.begin();assert(calls.some(c=>c[0]==='beginSensorSetup'&&c[1]===5));
+let setupRows=rows.map(r=>({...r,registered:false,connected:r.house===5,config:{...r.config,id:r.house===5?1:r.house}}));data={...data,...setupRows[4],houses:setupRows,setup:5};api.receive(data);assert.equal(node('houseTemperature5').textContent,'미수신');assert(!node('sensorWriteId').disabled);assert(!node('sensorId').disabled);
+node('sensorOne').checked=true;api.writeId();assert(calls.some(c=>c[0]==='changeSensorId'&&c[1]===5&&c[2]===true));assert(!node('sensorOne').checked);
+node('sensorNewBaud').value='4800';node('sensorOne').checked=true;api.writeBaud();assert(calls.some(c=>c[0]==='changeSensorBaud'&&c[1]===4800&&c[2]===true));
+data={...data,pending:{house:5,register:256,old:{id:1,baud:9600},next:{id:5,baud:9600},phase:'ACKNOWLEDGED'}};api.receive(data);assert(node('sensorWriteId').disabled&&node('sensorWriteBaud').disabled&&!node('sensorVerify').disabled);assert(node('sensorPending').textContent.includes('ACKNOWLEDGED'));api.verify();assert(calls.some(c=>c[0]==='verifySensorChange'));
+node('sensorId').value='7';api.dirty();api.receive(data);assert.equal(node('sensorId').value,'7');const n=calls.length;api.search();assert.equal(calls.length,n,'unsaved edits must block search');
+api.connect();const conf=calls.filter(c=>c[0]==='configureSensor').pop();assert.equal(JSON.parse(conf[1]).house,5);assert.equal(JSON.parse(conf[1]).id,7);
+api.receive({...data,pending:null,connected:false,temperature:null,humidity:null,receivedAt:0});assert.equal(node('sensorTemp').textContent,'미수신');assert(node('sensorConfirm').disabled);
+assert(!source.includes('Math.random')&&!source.includes('setSensorValue'));console.log('PASS: fixed five-house routing, setup isolation, native ID/baud actions, pending locks, edit protection, legacy OLED acknowledgment and stale clearing');

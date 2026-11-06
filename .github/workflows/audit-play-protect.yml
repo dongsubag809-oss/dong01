@@ -1,0 +1,61 @@
+name: Audit Play Protect APK V4.86 vs V4.92
+on:
+  push:
+    branches: [feature/v4-83-house-names]
+    paths: ['.github/workflows/audit-play-protect.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup APK inspection
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager"; fi
+          "$SDKMANAGER" 'build-tools;35.0.0'
+      - name: Retrieve known working and newly blocked signed releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for ver in 4.86 4.90 4.92; do
+            dir="$RUNNER_TEMP/audit/v$ver"
+            mkdir -p "$dir"
+            gh release download "v$ver" -R "${GITHUB_REPOSITORY}" --pattern "ENERGYBLUE_IXP101H1_v$ver.apk" --dir "$dir"
+            test -s "$dir/ENERGYBLUE_IXP101H1_v$ver.apk"
+          done
+      - name: Compare certificates package metadata native libraries and permissions
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/audit/reports"
+          for ver in 4.86 4.90 4.92; do
+            apk="$RUNNER_TEMP/audit/v$ver/ENERGYBLUE_IXP101H1_v$ver.apk"
+            report="$RUNNER_TEMP/audit/reports/v$ver.txt"
+            {
+              echo "--- APK VERSION v$ver ---"
+              sha256sum "$apk"
+              unzip -t "$apk" | tail -1
+              keytool -printcert -jarfile "$apk"
+              "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk"
+              "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | head -60
+              "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$apk"
+              echo "FILES:"
+              unzip -Z1 "$apk"
+            } > "$report" 2>&1
+          done
+          diff -u "$RUNNER_TEMP/audit/reports/v4.90.txt" "$RUNNER_TEMP/audit/reports/v4.92.txt" > "$RUNNER_TEMP/audit/reports/diff_490_492.txt" || true
+          diff -u "$RUNNER_TEMP/audit/reports/v4.86.txt" "$RUNNER_TEMP/audit/reports/v4.90.txt" > "$RUNNER_TEMP/audit/reports/diff_486_490.txt" || true
+          grep -h -E '^package:|sdkVersion:|targetSdkVersion:|uses-permission:|Signer #1 certificate SHA-256 digest:|SHA256: ' "$RUNNER_TEMP/audit/reports/"v4*.txt || true
+      - name: Archive report and audit copies
+        uses: actions/upload-artifact@v4
+        with:
+          name: HMI-PlayProtect-Audit-486-490-492
+          path: |
+            ${{ runner.temp }}/audit/reports/*
+            ${{ runner.temp }}/audit/v4.86/*.apk
+            ${{ runner.temp }}/audit/v4.90/*.apk
+            ${{ runner.temp }}/audit/v4.92/*.apk
+          retention-days: 14
