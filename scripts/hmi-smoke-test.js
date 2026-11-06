@@ -176,6 +176,28 @@ assert(node("phoneControlButton").className.includes("phone-selected")&&!node("p
 ctx.displayPhoneDetails("원격 HTTPS 시작 실패: TLS");
 assert(node("phoneStopButton").className.includes("phone-selected"),"Server failure must never appear active");
 assert(node("phoneStatus").textContent.includes("원격 HTTPS 시작 실패"),"Show original TLS failure on screen");
+// Phone connectivity: no stale address while starting; every network has its own URL.
+ctx.displayPhoneDetails(JSON.stringify({busy:true,enabled:false}));
+assert(node("phoneMonitorButton").disabled&&node("phoneAddress").textContent==="","Starting cannot show stale pairing/URL");
+assert(!node("phoneMonitorButton").className.includes("phone-selected"),"Do not claim ON before TLS self-test");
+const phoneInfo={enabled:true,selfTestOk:true,allowControl:true,port:18443,pairCode:"123456",certificateSha256:"ABCD",addresses:[
+ {kind:"Wi-Fi",interface:"wlan0",url:"https://192.0.2.10:18443"},
+ {kind:"유선 LAN",interface:"eth0",url:"https://198.51.100.10:18443"},
+ {kind:"VPN",interface:"tun0",url:"https://100.64.0.10:18443"}
+]};
+ctx.window.nativeMessage(JSON.stringify({type:"phoneGateway",message:JSON.stringify(phoneInfo)}));
+assert(!node("phoneControlButton").disabled&&node("phoneControlButton").className.includes("phone-selected"),"Async native result selects true mode");
+for(const a of phoneInfo.addresses)assert(node("phoneAddress").textContent.includes(a.url),"Each reachable-candidate interface URL must be shown");
+assert(node("phoneDiagnostic").textContent.includes("접속 시도 기록 없음"),"Local self-test must not pretend phone connectivity");
+phoneInfo.lastTcpAt=1;phoneInfo.lastTlsError="SSLHandshakeException";
+ctx.displayPhoneDetails(JSON.stringify(phoneInfo));
+assert(node("phoneDiagnostic").textContent.includes("TCP 접속은 도착")&&node("phoneDiagnostic").textContent.includes("SSLHandshakeException"),"Distinguish TLS rejection from no TCP arrival");
+phoneInfo.lastTlsError="";phoneInfo.lastPageAt=new Date().getTime();phoneInfo.lastClient="192.0.2.20";
+ctx.displayPhoneDetails(JSON.stringify(phoneInfo));
+assert(node("phoneDiagnostic").textContent.includes("페이지 응답 기록")&&!node("phoneDiagnostic").textContent.includes("기록 없음"),"Show actual external page history only");
+ctx.displayPhoneDetails(JSON.stringify({enabled:false,error:"BindException: Address already in use"}));
+assert(node("phoneAddress").textContent===""&&node("phoneCode").textContent==="","Failed startup clears stale URL/code");
+assert(node("phoneDiagnostic").textContent.includes("BindException"),"Preserve the server's actual failure reason");
 // Always-visible red emergency button, developer attribution, and physical-result acknowledgement.
 assert(html.includes("개발자:박동수"),"Developer attribution missing from header");
 assert(html.includes('id="emergencyButton"')&&html.includes('onclick="requestEmergencyStop()"'),"Header emergency button missing");

@@ -32,7 +32,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MainActivity extends Activity {
  private WebView browser;
  private LanDiscovery discovery;
- private RemoteGateway remoteGateway;
+ private volatile RemoteGateway remoteGateway;
+ private final Object phoneGuard=new Object();
+ private final ExecutorService phoneWorker=Executors.newSingleThreadExecutor();
+ private final AtomicBoolean phoneBusy=new AtomicBoolean(false);
  private final String[] remoteDoReadback=new String[2];
  private final String[] remoteDiReadback=new String[2];
  private final boolean[] remoteLink={false,false};
@@ -370,11 +373,63 @@ public final class MainActivity extends Activity {
   }catch(Exception ignored){}
   return "IP 확인 불가 (Wi-Fi 연결 확인)";
  }
+ private JSONArray phoneAddresses()throws Exception{
+  java.util.ArrayList<JSONObject> addresses=new java.util.ArrayList<>();
+  for(NetworkInterface nif:Collections.list(NetworkInterface.getNetworkInterfaces())){
+   if(!nif.isUp()||nif.isLoopback())continue;
+   String name=nif.getName(),lower=name.toLowerCase(java.util.Locale.ROOT);
+   String kind=lower.startsWith("wlan")?"Wi-Fi":lower.startsWith("eth")?"유선 LAN":
+     (lower.startsWith("tun")||lower.startsWith("wg")||lower.contains("tailscale"))?"VPN":"네트워크";
+   int rank=kind.equals("Wi-Fi")?0:kind.equals("유선 LAN")?1:kind.equals("VPN")?2:3;
+   for(InetAddress address:Collections.list(nif.getInetAddresses())){
+    if(!(address instanceof Inet4Address)||address.isLoopbackAddress()||address.isLinkLocalAddress())continue;
+    String ip=address.getHostAddress();
+    addresses.add(new JSONObject().put("kind",kind).put("interface",name).put("ip",ip)
+      .put("rank",rank).put("url","https://"+ip+":18443"));
+   }
+  }
+  Collections.sort(addresses,(a,b)->{
+   int rank=Integer.compare(a.optInt("rank"),b.optInt("rank"));
+   return rank!=0?rank:a.optString("interface").compareTo(b.optString("interface"));
+  });
+  return new JSONArray(addresses);
+ }
+ private String phoneInformation(){
+  try{
+   RemoteGateway gateway=remoteGateway;
+   JSONObject info=gateway==null?new JSONObject().put("enabled",false):gateway.information();
+   info.put("busy",phoneBusy.get());
+   try{info.put("addresses",phoneAddresses());}catch(Exception ex){info.put("networkError","주소 조회 실패: "+ex.getClass().getSimpleName());}
+   return info.toString();
+  }catch(Exception ex){return "{\"enabled\":false,\"error\":\"HTTPS 상태 조회 실패\"}";}
+ }
+ private String phoneOperation(boolean stop,boolean controls){
+  if(destroyed)return "{\"enabled\":false,\"error\":\"HMI 종료\"}";
+  if(!phoneBusy.compareAndSet(false,true))return phoneInformation();
+  try{
+   phoneWorker.execute(()->{
+    try{
+     RemoteGateway gateway;
+     synchronized(phoneGuard){
+      if(destroyed)return;
+      if(remoteGateway==null)remoteGateway=createRemoteGateway();
+      gateway=remoteGateway;
+     }
+     if(stop)gateway.close();else gateway.enable(controls);
+    }catch(Exception ex){android.util.Log.w("EB-REMOTE","Gateway operation: "+ex.getClass().getSimpleName());}
+    finally{
+     phoneBusy.set(false);
+     if(!destroyed)emit("phoneGateway",phoneInformation());
+    }
+   });
+  }catch(java.util.concurrent.RejectedExecutionException ex){phoneBusy.set(false);}
+  return phoneInformation();
+ }
  @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){if(remoteGateway!=null)remoteGateway.close();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){synchronized(phoneGuard){destroyed=true;if(remoteGateway!=null)remoteGateway.dispose();}phoneWorker.shutdownNow();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  private static String bits(boolean[] values){
   StringBuilder out=new StringBuilder(64);
   for(boolean v:values)out.append(v?'1':'0');
@@ -707,27 +762,14 @@ public final class MainActivity extends Activity {
    return "비상정지 잠금 해제 · 자동 출력 재시작 없음 · 현장 안전 확인 필요";
   }
   @JavascriptInterface public boolean isEmergencyLatched(){return emergencyLatched.get();}
-  @JavascriptInterface public String startPhoneGateway(boolean controls){
-   if(destroyed)return "{\"error\":\"HMI 종료\"}";
-   try{
-    if(remoteGateway==null)remoteGateway=createRemoteGateway();
-    return remoteGateway.enable(controls).toString();
-   }catch(Exception ex){return "원격 HTTPS 시작 실패: "+ex.getClass().getSimpleName();}
-  }
-  @JavascriptInterface public String phoneGatewayInfo(){
-   try{
-    return remoteGateway==null?"{\"enabled\":false}":remoteGateway.information().toString();
-   }catch(Exception ex){return "{\"enabled\":false}";}
-  }
+  @JavascriptInterface public String startPhoneGateway(boolean controls){return phoneOperation(false,controls);}
+  @JavascriptInterface public String phoneGatewayInfo(){return phoneInformation();}
   @JavascriptInterface public String setPhoneControl(boolean control){
    if(remoteGateway==null||!remoteGateway.isRunning())return "HMI 원격 HTTPS 서버가 실행 중이지 않습니다.";
    remoteGateway.setControls(control);
    try{return remoteGateway.information().toString();}catch(Exception ex){return "원격 권한 변경 오류";}
   }
-  @JavascriptInterface public String stopPhoneGateway(){
-   if(remoteGateway!=null)remoteGateway.close();
-   return "휴대폰 HTTPS 접속 종료 · 기존 인증 세션 해제";
-  }
+  @JavascriptInterface public String stopPhoneGateway(){return phoneOperation(true,false);}
   @JavascriptInterface public void syncPhoneNames(String raw){
    if(raw==null||raw.length()>15000)return;
    try{

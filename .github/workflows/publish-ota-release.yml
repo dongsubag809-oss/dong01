@@ -1,5 +1,8 @@
 name: Publish HMI Wi-Fi Update Release
 on:
+  push:
+    branches: [feature/v4-83-house-names]
+    paths: ['.github/workflows/publish-ota-release.yml']
   workflow_dispatch:
     inputs:
       tag:
@@ -24,6 +27,8 @@ jobs:
         run: node scripts/hmi-smoke-test.js
       - name: Test secure mobile gateway integration and guards
         run: node scripts/remote-gateway-test.js
+      - name: Test actual HTTPS gateway sockets, pairing, restart and failure modes
+        run: python3 scripts/run-remote-gateway-tests.py
       - name: Test N4D4F64 Modbus FC03 CRC and 64-channel parsing
         run: |
           set -euo pipefail
@@ -60,7 +65,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.HMI_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.HMI_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.HMI_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.07' || inputs.tag }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
@@ -71,7 +76,7 @@ jobs:
           PATCH=0
           if [[ "${VERSION}" == *.*.* ]]; then PATCH="${VERSION##*.}"; fi
           VERSION_CODE=$((10#$MAJOR * 10000 + 10#$MINOR * 100 + 10#$PATCH))
-          gradle --no-daemon :app:assembleRelease -PhmiVersionCode="$VERSION_CODE" -PhmiVersionName="$VERSION"
+          gradle --no-daemon :app:assembleRelease :app:lintRelease -PhmiVersionCode="$VERSION_CODE" -PhmiVersionName="$VERSION"
           mkdir -p "$RUNNER_TEMP/hmi-sign" dist
           echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/hmi-sign/signing.jks"
           chmod 600 "$RUNNER_TEMP/hmi-sign/signing.jks"
@@ -90,7 +95,7 @@ jobs:
           rm -f "$RUNNER_TEMP/hmi-sign/signing.jks"
       - name: Create single ZIP distribution with installation guide
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.07' || inputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/hmi-package"
@@ -121,38 +126,40 @@ jobs:
             "V5.04: motor OPEN STOP CLOSE button full-background colors from received PLC states" \
             "V5.05: HTTPS phone monitor/control support with one-time pairing, TLS and guarded shared PLC output queue" \
             "${RELEASE_TAG}: HMI phone-access buttons show current actual server monitor/control/stopped mode in full-width green/blue/brown backgrounds; remove erroneous fixed monitor primary highlight" \
+            "V5.07: Wi-Fi/LAN/VPN URLs, explicit IPv4 bind, pinned-certificate HTTPS page self-test before ON, AndroidKeyStore identity selection, visible TCP/TLS/page diagnostics, asynchronous phone worker, bounded sockets and generation-safe restart/cancel" \
+            "V5.07 review: V5.06 selected-mode colors preserved; PLC serial/Modbus sources, mappings and all local output/interlock implementations unchanged" \
+            "V5.07 validation: 41 actual JVM TLS/HTTP checks plus HMI/mobile regressions, Modbus CRC/parser, signed Android release build and lint. Physical HMI/phone/network/PLC verification remains pending." \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
             "ENERGYBLUE IXP101H1 HMI ${RELEASE_TAG}" \
-            "1. Keep existing HMI app installed; do not clear its data." \
-            "2. Android 7 HMI: Search -> Download and verify SHA-256 -> User approves normal Android installer." \
-            "2a. Android 8+: Export verified APK to user folder then open in file manager; no installer privilege requested." \
-            "3. Android installation approval is required. If Google Play Protect says Harmful app blocked, CANCEL installation; do not disable protection." \
-            "4. On app startup COM5 opens automatically (last confirmed path and baud, default /dev/ttyS5 9600). PLC ID1 and ID2 are polled separately; offline stays disconnected." \
-            "4d. Both ID1 and ID2 offer DI/DO01-64 received state and per-channel controls on the Manual page. No automatic DO command is sent on app startup or reconnect." \
-            "4b. If a second PLC is physically connected later, select 2-board mode and read ID1+ID2. Do not select 2-board mode with only ID1 present." \
-            "4a. PLC ID1/ID2 connection state is checked automatically; enable manual operation only after verifying field wiring, limit contacts and hardware emergency stop." \
-            "4c. Each unrelated DO may be operated independently; verified historical motor pairs cannot be energized in opposite directions together. Manual arm has no 60-second timer; no output auto-starts on reconnect." \
-            "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
-            "5a. Actual address plan is in DO_MAP_128.csv: houses 1-5 use 24 DO each in order, ID2 DO57-64 are spare. This is a logical plan, NOT verified physical wiring." \
-            "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
-            "5c. V5.01 manual page: activate Manual Operation after confirming physical wiring and hardwired emergency stop; operate motor with OPEN / STOP / CLOSE buttons and lamps, fans or irrigation with ON/OFF." \
-            "5d. Direction change: opposite DO OFF/CRC/readback, 0.5 second delay and new DO ON/readback. STOP commands OFF to both outputs, but DOES NOT replace hardwired emergency-stop or limit-switch protection." \
-            "5e. Always-visible red Emergency Stop blocks new output commands and attempts to turn OFF all currently ON DO on both ID1 and ID2; each stop result is confirmed only by real PLC CRC readback." \
-            "5f. Emergency stop is a software RS485 sequential command, not a hardware E-stop. Disconnected PLC or interrupted bus can leave motors energized. Use independently wired fail-safe emergency stop and safety relays." \
-            "5g. Emergency latch reset is manual, does not auto-restart any DO, and is blocked while OFF requests are running. DI inputs cannot be reset by HMI." \
-            "5h. Header developer identification: 박동수. DI limit addresses and physical motor wiring remain unverified." \
-            "5i. V5.03: On the Manual page, green ON and blue OFF button backgrounds follow actual CRC-verified PLC DO readback only. No color change merely on tap; duplicate DO state caption removed." \
-            "5j. V5.04: Motor OPEN green, STOP orange, CLOSE blue fills the selected whole button only on actual PLC DO state readback (not on a click). The motor reverse interlock is unchanged." \
-            "7. V5.05 phone access: HMI Settings -> Phone Access -> Enable monitor (default) or monitor+control. Record the HMI HTTPS URL, 6-digit one-time code and certificate SHA-256 fingerprint." \
-            "7a. Use phone on the same trusted Wi-Fi or properly protected VPN. Open https://HMI-IP:18443. Browser does not automatically trust Android-generated self-signed TLS certificate: verify fingerprint first; do not ignore mismatches." \
-            "7b. Enter code within 5 minutes. Pairing is one use only with 5 failed-attempt lockout. Session expires after 2 hours and is not saved in phone storage." \
-            "7c. HMI must separately activate on-site Manual Operation for remote DO or motor writes. Existing shared PLC command queue and reverse-direction interlocks are mandatory." \
-            "7d. Remote Emergency is a software request only. No guaranteed fail-safe stop without hardwired safety circuit. Phone connection/TLS trust and live PLC actions are NOT hardware-verified." \
-            "7e. Do NOT port-forward TCP 18443 to the public Internet. Disable Phone Access at HMI after use; remote access does NOT start automatically on reboot." \
-            "7f. V5.06: Phone Access buttons show only the HTTPS gateway-confirmed active mode. A site-unreachable error still needs real IP, Wi-Fi, port and TLS checks; mode color alone does not confirm phone connectivity." \
-            "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
+            "" \
+            "설치 방법" \
+            "1. 기존 HMI 앱과 데이터를 삭제하지 마세요. 기존 배포 서명키로 서명한 업데이트 APK입니다." \
+            "2. HMI의 프로그램 업데이트에서 검색 > APK 다운로드 > 설치 승인을 순서대로 실행하세요." \
+            "3. USB 사용 시 ZIP을 풀고 ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk를 HMI에서 실행하여 덮어쓰기를 승인하세요." \
+            "4. Android 7 HMI / ARMv7 및 ARM64용 네이티브 통신 라이브러리가 APK에 포함됩니다. 별도 PC용 DLL 설치는 필요하지 않습니다." \
+            "" \
+            "휴대폰 연결" \
+            "1. HMI 환경설정 > 휴대폰 연동에서 감시 접속 켜기 또는 감시+제어 접속 켜기를 누르세요." \
+            "2. HTTPS 서버 시작 및 첫 화면 내부 수신 검증이 끝날 때까지 기다리세요. 준비 실패 시 실제 오류가 진단란에 표시됩니다." \
+            "3. 휴대폰을 HMI와 같은 공유기에 연결하고, Wi-Fi 또는 유선 LAN 주소를 https://부터 :18443까지 모두 입력하세요." \
+            "4. VPN으로 접속할 때는 HMI의 VPN 주소를 선택하고 휴대폰도 해당 VPN에 연결하세요. 주소는 실제 장비에서 조회합니다." \
+            "5. 자체 인증서이므로 브라우저가 자동 신뢰하지 않습니다. 실제 HMI의 SHA-256 지문과 브라우저 인증서를 대조하세요. 지문 불일치 시 진행하지 마세요." \
+            "6. 페이지가 열린 뒤 6자리 일회용 코드를 입력하세요. 5분 유효, 1회 사용, 세션은 2시간 유효합니다. 모드 변경이나 재시작 시 다시 인증해야 합니다." \
+            "7. 연결 진단은 3초마다 갱신됩니다. 접속 기록 없음은 IP/동일 Wi-Fi/공유기 기기 간 차단을, TCP 도착 후 TLS 오류는 HTTPS 입력/인증서/HMI 시각을 확인하세요." \
+            "8. HMI 내부 HTTPS 검증 통과와 휴대폰 페이지 응답 기록은 현재 휴대폰 연결 유지 또는 공유기 통과를 보증하지 않습니다. 외부 인터넷 포트포워딩은 사용하지 마세요." \
+            "" \
+            "기존 제어 및 설정" \
+            "기존 COM5 설정, PLC ID1/ID2, 128DO 주소, 실제 CRC 수신 표시, 정역 인터록, 0.5초 전환, 수동 운전 승인, 비상정지 처리 및 사용자 이름은 유지합니다." \
+            "원격 제어는 HMI 현장 수동운전 승인이 필요합니다. 휴대폰과 HMI는 기존의 동일한 PLC 명령 대기열과 인터록을 사용합니다." \
+            "앱 시작/재접속만으로 출력을 켜지 않습니다. 휴대폰 접속도 앱 재시작 시 자동으로 켜지지 않습니다." \
+            "DO_MAP_128.csv는 기존 논리 주소표입니다. 실제 결선과 DI 리미트는 현장 확인이 필요하며, 통신 명령을 하드웨어 비상정지 대신 사용할 수 없습니다." \
+            "" \
+            "검증 범위" \
+            "HMI/모바일 스크립트 회귀, 41건 실제 TLS/HTTP 통신, 인증/권한/만료/포트 충돌/재시작/취소/IPv4 접속, Modbus CRC/64채널 파싱, Android 릴리스 빌드와 린트를 확인했습니다." \
+            "실제 IXP101H1 AndroidKeyStore, 휴대폰 브라우저 인증서 신뢰, 현장 공유기/VPN 및 PLC 부하 동작은 현물 미검증입니다." \
+            "변경 및 검토 이력은 VERSION_HISTORY.txt 한 파일에서 관리합니다. 빌드 소스 커밋은 BUILD_SOURCE.txt를 확인하세요." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
           unzip -t "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip"
@@ -166,7 +173,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.07' || inputs.tag }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

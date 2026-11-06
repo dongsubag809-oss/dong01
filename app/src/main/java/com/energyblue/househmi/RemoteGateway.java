@@ -10,7 +10,8 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.cert.Certificate;
-import java.text.SimpleDateFormat;
+import java.security.cert.X509Certificate;
+import java.security.cert.CertificateException;
 import java.util.*;
 import java.util.concurrent.*;
 import javax.net.ssl.*;
@@ -29,36 +30,76 @@ public final class RemoteGateway implements AutoCloseable {
  private static final int PORT=18443;
  private final Context context;
  private final Controller controller;
- private final ExecutorService connections=Executors.newFixedThreadPool(4);
+ // The TLS factory is injectable only within this package for real socket regression tests.
+ interface TlsSource { SSLContext create() throws Exception; }
+ private final TlsSource tlsSource;
+ private final ThreadPoolExecutor connections=new ThreadPoolExecutor(4,4,30,TimeUnit.SECONDS,
+   new ArrayBlockingQueue<Runnable>(12));
+ private final Set<SSLSocket> activeSockets=Collections.newSetFromMap(new ConcurrentHashMap<SSLSocket,Boolean>());
  private final SecureRandom random=new SecureRandom();
- private volatile boolean running=false,allowControl=false;
+ private volatile boolean running=false,ready=false,allowControl=false,disposed=false;
  private volatile String pairCode="",token="",fingerprint="";
  private volatile long codeExpiry=0,tokenExpiry=0;
  private int failedPairs=0;
- private long pairLockUntil=0;
+ private long pairLockUntil=0,generation=0;
+ private volatile String state="stopped",lastError="",lastTlsError="",lastClient="";
+ private volatile long lastTcpAt=0,lastTlsAt=0,lastPageAt=0;
  private SSLServerSocket server;
  private Thread listener;
- public RemoteGateway(Context context,Controller controller){this.context=context.getApplicationContext();this.controller=controller;}
- public synchronized JSONObject enable(boolean controls)throws Exception{
-  close();
-  SSLContext tls=sslContext();
-  server=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket(PORT,6);
-  server.setEnabledProtocols(new String[]{"TLSv1.2"});
-  server.setSoTimeout(1000);
-  running=true;allowControl=controls;
-  pairCode=String.format(Locale.US,"%06d",random.nextInt(1000000));
-  codeExpiry=System.currentTimeMillis()+300000;
-  token="";tokenExpiry=0;failedPairs=0;pairLockUntil=0;
-  listener=new Thread(this::serve,"hmi-remote-tls");
-  listener.setDaemon(true);listener.start();
-  return information();
+ public RemoteGateway(Context context,Controller controller){this(context,controller,null);}
+ RemoteGateway(Context context,Controller controller,TlsSource source){
+  this.context=context.getApplicationContext();this.controller=controller;
+  this.tlsSource=source==null?this::sslContext:source;
+ }
+ public JSONObject enable(boolean controls)throws Exception{
+  final long epoch;
+  synchronized(this){
+   if(disposed)throw new IOException("HMI gateway disposed");
+   close();epoch=++generation;state="starting";lastError="";lastTlsError="";
+   lastClient="";lastTcpAt=0;lastTlsAt=0;lastPageAt=0;
+  }
+  SSLServerSocket candidate=null;
+  try{
+   SSLContext tls=tlsSource.create();
+   candidate=(SSLServerSocket)tls.getServerSocketFactory().createServerSocket();
+   candidate.setReuseAddress(true);
+   // Displayed addresses are IPv4; listen explicitly on every IPv4 interface.
+   candidate.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"),PORT),6);
+   candidate.setEnabledProtocols(new String[]{"TLSv1.2"});
+   candidate.setSoTimeout(1000);
+   final SSLServerSocket bound=candidate;
+   synchronized(this){
+    if(epoch!=generation)throw new IOException("서버 시작 취소");
+    server=bound;running=true;allowControl=controls;
+    listener=new Thread(()->serve(bound,epoch),"hmi-remote-tls");
+    listener.setDaemon(true);listener.start();
+   }
+   // A bound port is not proof that AndroidKeyStore can complete a TLS handshake.
+   verifyLocalPage();
+   synchronized(this){
+    if(epoch!=generation||!running)throw new IOException("서버 시작 취소");
+    ready=true;state="ready";
+    pairCode=String.format(Locale.US,"%06d",random.nextInt(1000000));
+    codeExpiry=System.currentTimeMillis()+300000;
+    token="";tokenExpiry=0;failedPairs=0;pairLockUntil=0;
+   }
+   return information();
+  }catch(Exception ex){
+   if(candidate!=null)try{candidate.close();}catch(Exception ignored){}
+   synchronized(this){if(epoch==generation){close();state="failed";lastError=detail(ex);}}
+   throw ex;
+  }
  }
  public synchronized JSONObject information()throws Exception{
-  return new JSONObject().put("enabled",running).put("port",PORT)
-   .put("allowControl",allowControl).put("pairCode",running&&System.currentTimeMillis()<codeExpiry?pairCode:"만료 · 원격 서버 재시작")
-   .put("certificateSha256",fingerprint);
+  boolean enabled=running&&ready&&server!=null&&!server.isClosed()&&listener!=null&&listener.isAlive();
+  return new JSONObject().put("enabled",enabled).put("port",PORT)
+   .put("allowControl",allowControl).put("pairCode",enabled&&System.currentTimeMillis()<codeExpiry?pairCode:"만료 · 접속 켜기를 눌러 코드 재발급")
+   .put("codeExpiresAt",codeExpiry).put("certificateSha256",fingerprint)
+   .put("state",state).put("selfTestOk",enabled).put("error",lastError)
+   .put("lastTlsError",lastTlsError).put("lastClient",lastClient)
+   .put("lastTcpAt",lastTcpAt).put("lastTlsAt",lastTlsAt).put("lastPageAt",lastPageAt);
  }
- public boolean isRunning(){return running;}
+ public boolean isRunning(){return running&&ready;}
  public synchronized void setControls(boolean enabled){
   allowControl=enabled;
   // Changing privilege revokes all existing sessions. Re-pairing is required.
@@ -67,9 +108,65 @@ public final class RemoteGateway implements AutoCloseable {
   codeExpiry=System.currentTimeMillis()+300000;
  }
  public synchronized void close(){
-  running=false;allowControl=false;token="";tokenExpiry=0;pairCode="";codeExpiry=0;
+  ++generation;running=false;ready=false;state="stopped";allowControl=false;
+  token="";tokenExpiry=0;pairCode="";codeExpiry=0;
   if(server!=null)try{server.close();}catch(Exception ignored){}
   server=null;
+  for(SSLSocket socket:activeSockets)try{socket.close();}catch(Exception ignored){}
+  activeSockets.clear();
+  connections.getQueue().clear();
+ }
+ public synchronized void dispose(){disposed=true;close();connections.shutdownNow();}
+ private static String detail(Throwable error){
+  StringBuilder text=new StringBuilder(error.getClass().getSimpleName());
+  for(Throwable e=error;e!=null;e=e.getCause()){
+   String message=e.getMessage();
+   if(message!=null&&!message.isEmpty())text.append(": ").append(message);
+   if(text.length()>350)break;
+  }
+  return text.substring(0,Math.min(text.length(),400));
+ }
+ private static String sha256(Certificate certificate)throws Exception{
+  byte[] digest=MessageDigest.getInstance("SHA-256").digest(certificate.getEncoded());
+  StringBuilder sb=new StringBuilder();
+  for(byte b:digest)sb.append(String.format(Locale.US,"%02X",b&255));
+  return sb.toString();
+ }
+ private void verifyLocalPage()throws Exception{
+  final String expected=fingerprint;
+  if(expected.length()!=64)throw new GeneralSecurityException("HTTPS 인증서 지문 없음");
+  // This trust manager is confined to the loopback diagnostic and pins this HMI's
+  // exact certificate. It never changes browser trust or accepts an arbitrary CA.
+  X509TrustManager pinned=new X509TrustManager(){
+   public X509Certificate[] getAcceptedIssuers(){return new X509Certificate[0];}
+   public void checkClientTrusted(X509Certificate[] chain,String auth)throws CertificateException{throw new CertificateException("Client certificates not supported");}
+   public void checkServerTrusted(X509Certificate[] chain,String auth)throws CertificateException{
+    try{
+     if(chain==null||chain.length==0||!expected.equals(sha256(chain[0])))throw new CertificateException("HMI 인증서 지문 불일치");
+     chain[0].checkValidity();
+    }catch(CertificateException ex){throw ex;}catch(Exception ex){throw new CertificateException(ex);}
+   }
+  };
+  SSLContext client=SSLContext.getInstance("TLSv1.2");
+  client.init(null,new TrustManager[]{pinned},new SecureRandom());
+  try(SSLSocket socket=(SSLSocket)client.getSocketFactory().createSocket()){
+   socket.connect(new InetSocketAddress("127.0.0.1",PORT),3000);
+   socket.setSoTimeout(4000);socket.setEnabledProtocols(new String[]{"TLSv1.2"});
+   socket.startHandshake();
+   OutputStream out=socket.getOutputStream();
+   out.write(("GET / HTTP/1.1\r\nHost: 127.0.0.1:"+PORT+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.flush();
+   InputStream in=socket.getInputStream();
+   if(!"HTTP/1.1 200 OK".equals(readLine(in)))throw new IOException("HTTPS 첫 화면 응답 실패");
+   int length=-1;
+   for(int i=0;i<48;i++){
+    String header=readLine(in);if(header.isEmpty())break;
+    if(header.toLowerCase(Locale.ROOT).startsWith("content-length:"))length=Integer.parseInt(header.substring(15).trim());
+   }
+   if(length<=0||length>512*1024)throw new IOException("휴대폰 페이지 길이 오류");
+   byte[] body=new byte[length];int off=0;
+   while(off<length){int n=in.read(body,off,length-off);if(n<0)throw new EOFException("휴대폰 페이지 수신 중단");off+=n;}
+   if(!new String(body,StandardCharsets.UTF_8).contains("/api/pair"))throw new IOException("휴대폰 페이지 내용 오류");
+  }
  }
  private SSLContext sslContext()throws Exception{
   final String alias="energyblue_hmi_remote_tls_v1";
@@ -86,25 +183,50 @@ public final class RemoteGateway implements AutoCloseable {
   }
   Certificate cert=store.getCertificate(alias);
   if(cert==null)throw new GeneralSecurityException("HMI TLS certificate unavailable");
-  byte[] digest=MessageDigest.getInstance("SHA-256").digest(cert.getEncoded());
-  StringBuilder sb=new StringBuilder();
-  for(byte b:digest)sb.append(String.format(Locale.US,"%02X",b&255));
-  fingerprint=sb.toString();
-  KeyManagerFactory km=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-  km.init(store,null);
+  fingerprint=sha256(cert);
+  final PrivateKey key=(PrivateKey)store.getKey(alias,null);
+  if(key==null)throw new GeneralSecurityException("HMI TLS private key unavailable");
+  final Certificate[] storedChain=store.getCertificateChain(alias);
+  if(storedChain==null||storedChain.length==0)throw new GeneralSecurityException("HMI TLS certificate chain unavailable");
+  final X509Certificate[] chain=new X509Certificate[storedChain.length];
+  for(int i=0;i<chain.length;i++)chain[i]=(X509Certificate)storedChain[i];
+  // Explicitly select the existing AndroidKeyStore RSA identity; do not export
+  // the private key, rotate the certificate or rely on provider alias enumeration.
   SSLContext tls=SSLContext.getInstance("TLSv1.2");
-  tls.init(km.getKeyManagers(),null,new SecureRandom());
+  tls.init(new KeyManager[]{tlsIdentity(alias,key,chain)},null,new SecureRandom());
   return tls;
  }
- private void serve(){
-  while(running){
+ static X509KeyManager tlsIdentity(final String alias,final PrivateKey key,final X509Certificate[] chain){
+  return new X509KeyManager(){
+   public String[] getClientAliases(String type,Principal[] issuers){return null;}
+   public String chooseClientAlias(String[] types,Principal[] issuers,Socket socket){return null;}
+   public String[] getServerAliases(String type,Principal[] issuers){return "RSA".equals(type)?new String[]{alias}:null;}
+   public String chooseServerAlias(String type,Principal[] issuers,Socket socket){return "RSA".equals(type)?alias:null;}
+   public X509Certificate[] getCertificateChain(String name){return alias.equals(name)?chain.clone():null;}
+   public PrivateKey getPrivateKey(String name){return alias.equals(name)?key:null;}
+  };
+ }
+
+ private synchronized boolean current(SSLServerSocket bound,long epoch){return running&&generation==epoch&&server==bound;}
+ private void serve(SSLServerSocket bound,long epoch){
+  while(current(bound,epoch)){
    try{
-    SSLSocket socket=(SSLSocket)server.accept();
-    socket.setEnabledProtocols(new String[]{"TLSv1.2"});
-    socket.setSoTimeout(6000);
-    connections.execute(()->handle(socket));
+    final SSLSocket socket=(SSLSocket)bound.accept();
+    socket.setEnabledProtocols(new String[]{"TLSv1.2"});socket.setSoTimeout(6000);
+    synchronized(this){
+     if(!current(bound,epoch)){socket.close();continue;}
+     activeSockets.add(socket);
+     if(!socket.getInetAddress().isLoopbackAddress()){
+      lastClient=socket.getInetAddress().getHostAddress();lastTcpAt=System.currentTimeMillis();
+     }
+    }
+    try{connections.execute(()->handle(socket,bound,epoch));}
+    catch(RejectedExecutionException busy){activeSockets.remove(socket);socket.close();}
    }catch(SocketTimeoutException expected){}
-    catch(Exception ex){if(running)android.util.Log.w("EB-REMOTE","TLS accept: "+ex.getClass().getSimpleName());}
+    catch(Exception ex){
+     synchronized(this){if(current(bound,epoch)){close();state="failed";lastError="HTTPS 수신 중단: "+detail(ex);}}
+     break;
+    }
   }
  }
  private static String readLine(InputStream in)throws IOException{
@@ -118,9 +240,13 @@ public final class RemoteGateway implements AutoCloseable {
   if(line.size()>=4095)throw new IOException("Header too long");
   return line.toString("UTF-8");
  }
- private void handle(SSLSocket socket){
+ private void handle(SSLSocket socket,SSLServerSocket bound,long epoch){
+  boolean tlsComplete=false;
+  final boolean external=!socket.getInetAddress().isLoopbackAddress();
   try(SSLSocket ss=socket){
    ss.startHandshake();
+   tlsComplete=true;
+   synchronized(this){if(!current(bound,epoch))return;if(external){lastTlsAt=System.currentTimeMillis();lastTlsError="";}}
    InputStream in=ss.getInputStream();
    OutputStream out=ss.getOutputStream();
    String request=readLine(in);
@@ -149,13 +275,15 @@ public final class RemoteGateway implements AutoCloseable {
    JSONObject payload=new JSONObject(size>0?new String(body,StandardCharsets.UTF_8):"{}");
    if(method.equals("GET")&&path.equals("/")){
     byte[] asset=readAsset();
-    sendBytes(out,200,"text/html; charset=utf-8",asset);return;
+    sendBytes(out,200,"text/html; charset=utf-8",asset);
+    synchronized(this){if(current(bound,epoch)&&external)lastPageAt=System.currentTimeMillis();}
+    return;
    }
    if(method.equals("POST")&&path.equals("/api/pair")){
     String given=payload.optString("code","");
     synchronized(this){
      long now=System.currentTimeMillis();
-     if(now<pairLockUntil||now>codeExpiry||!running){
+     if(now<pairLockUntil||now>codeExpiry||!ready||!current(bound,epoch)){
       send(out,429,"application/json","{\"error\":\"pairing locked or expired\"}");return;
      }
      if(given.length()!=6||!MessageDigest.isEqual(given.getBytes(StandardCharsets.UTF_8),pairCode.getBytes(StandardCharsets.UTF_8))){
@@ -170,7 +298,7 @@ public final class RemoteGateway implements AutoCloseable {
      return;
     }
    }
-   if(!authorized(authorization)){
+   if(!authorized(authorization,bound,epoch)){
     send(out,401,"application/json","{\"error\":\"pairing required\"}");return;
    }
    if(method.equals("GET")&&path.equals("/api/status")){
@@ -189,11 +317,12 @@ public final class RemoteGateway implements AutoCloseable {
    }
    send(out,404,"application/json","{\"error\":\"not found\"}");
   }catch(Exception ex){
+   synchronized(this){if(external&&current(bound,epoch)&&!tlsComplete)lastTlsError=detail(ex);}
    android.util.Log.w("EB-REMOTE","Request rejected: "+ex.getClass().getSimpleName());
-  }
+  }finally{activeSockets.remove(socket);}
  }
- private synchronized boolean authorized(String header){
-  if(!running||token.isEmpty()||System.currentTimeMillis()>tokenExpiry)return false;
+ private synchronized boolean authorized(String header,SSLServerSocket bound,long epoch){
+  if(!ready||!current(bound,epoch)||token.isEmpty()||System.currentTimeMillis()>tokenExpiry)return false;
   if(!header.startsWith("Bearer "))return false;
   return MessageDigest.isEqual(header.substring(7).getBytes(StandardCharsets.UTF_8),token.getBytes(StandardCharsets.UTF_8));
  }
