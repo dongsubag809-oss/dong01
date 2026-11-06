@@ -3,6 +3,7 @@ package com.energyblue.househmi;
 import android.app.Activity;
 import android.os.Bundle;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 import android.content.Intent;
 import android.net.Uri;
@@ -114,6 +115,70 @@ public final class MainActivity extends Activity {
  }
  private ReleaseUpdater updater;
  private final Handler ui = new Handler(Looper.getMainLooper());
+ private volatile boolean plcAutoPaused=false;
+ private SharedPreferences plcPreferences(){
+  return getSharedPreferences("hmi_com5_v1",Context.MODE_PRIVATE);
+ }
+ private boolean autoM0(int id){return plcPreferences().getBoolean("m0_id"+id,false);}
+ private void sendLink(int id,boolean online,String reason){
+  try {
+   JSONObject o=new JSONObject().put("id",id).put("connected",online)
+     .put("detail",reason==null?"":reason);
+   emit("plcLink",o.toString());
+  }catch(Exception ignored){}
+ }
+ private void autoScanOnce(){
+  if(destroyed||plcAutoPaused)return;
+  if(!SerialPort.isOpen()){
+   String path=plcPreferences().getString("device","/dev/ttyS5");
+   int baud=plcPreferences().getInt("baud",9600);
+   String opened=SerialPort.open(path,baud);
+   emit("plcPort",opened);
+   if(!"OPEN_OK".equals(opened)){
+    sendLink(1,false,"COM5 "+opened);sendLink(2,false,"COM5 "+opened);
+    return;
+   }
+  }
+  boolean anyOnline=false;
+  for(int id=1;id<=2;id++){
+   if(destroyed||plcAutoPaused||Thread.currentThread().isInterrupted())return;
+   try{
+    boolean shorted=autoM0(id);
+    int[] addresses=ModbusReadOnly.addresses(shorted);
+    boolean[] dout=ModbusReadOnly.read64(id,addresses[0]);
+    boolean[] di=ModbusReadOnly.read64(id,addresses[1]);
+    anyOnline=true;
+    markRead(id,shorted);
+    notifyBoard(id,shorted,di,dout);
+    sendLink(id,true,"CRC 확인 · DI/DO 64채널 실수신");
+   }catch(Exception ex){
+    if(id<=activeBoards())invalidateBoard(id);
+    String message=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
+    sendLink(id,false,message);
+    try{
+     JSONObject fail=new JSONObject().put("id",id).put("status","ERROR")
+       .put("message","자동 점검: "+message);
+     emit("plc",fail.toString());
+    }catch(Exception ignored){}
+   }
+  }
+  if(!anyOnline){
+   SerialPort.close(); // Retry port next cycle, but never transmit DO commands on reconnect.
+   emit("plcPort","COM5 재연결 대기");
+  }
+ }
+ private final Runnable plcAutoPoll=new Runnable(){
+  @Override public void run(){
+   if(destroyed)return;
+   if(!plcAutoPaused&&plcBusy.compareAndSet(false,true)){
+    plcWorker.execute(()->{
+     try{autoScanOnce();}
+     finally{plcBusy.set(false);}
+    });
+   }
+   ui.postDelayed(this,5000);
+  }
+ };
  private volatile boolean destroyed = false;
  @Override public void onCreate(Bundle b) { super.onCreate(b);
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
@@ -135,6 +200,7 @@ public final class MainActivity extends Activity {
   // Updates must be requested from the HMI UI. Never download APKs automatically on startup.
   discovery = new LanDiscovery(); discovery.start();
   setContentView(browser); browser.loadUrl("file:///android_asset/index.html");
+  ui.postDelayed(plcAutoPoll,1500);
  }
  private void emit(String event, String message) {
   ui.post(()->{if(destroyed||browser==null)return;
@@ -159,7 +225,7 @@ public final class MainActivity extends Activity {
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){invalidateReads();destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  private static String bits(boolean[] values){
   StringBuilder out=new StringBuilder(64);
   for(boolean v:values)out.append(v?'1':'0');
@@ -173,8 +239,41 @@ public final class MainActivity extends Activity {
     obj.put("result",file.exists()?"장치 파일 확인됨 (RS485 통신 미검증)":"장치 파일 없음");return obj.toString();
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
-  @JavascriptInterface public String openCom5(String path,int baud){if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";invalidateReads();return SerialPort.open(path,baud)+" | 연결 보드 수량 선택 후 읽기 · 출력은 수동 승인 필요";}
-  @JavascriptInterface public String closeCom5(){if(plcBusy.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";invalidateReads();SerialPort.close();return "COM5 닫힘";}
+  @JavascriptInterface public String openCom5(String path,int baud){
+   if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";
+   invalidateReads();
+   String result=SerialPort.open(path,baud);
+   if("OPEN_OK".equals(result)){
+    plcPreferences().edit().putString("device",path).putInt("baud",baud).apply();
+    plcAutoPaused=false;
+   }
+   emit("plcPort",result);
+   return result+" | ID 1·2 자동 실수신 감시 · DO 자동 출력 없음";
+  }
+  @JavascriptInterface public String closeCom5(){
+   if(plcBusy.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";
+   plcAutoPaused=true;
+   invalidateReads();
+   SerialPort.close();
+   sendLink(1,false,"사용자가 포트를 닫음");sendLink(2,false,"사용자가 포트를 닫음");
+   emit("plcPort","COM5 닫힘 · 수동 재개 가능");
+   return "COM5 닫힘 · 자동 연결 일시중지";
+  }
+  @JavascriptInterface public String getAutoPlcConfig(){
+   try{
+    return new JSONObject().put("path",plcPreferences().getString("device","/dev/ttyS5"))
+      .put("baud",plcPreferences().getInt("baud",9600))
+      .put("mode1",autoM0(1)?"m0_short":"default")
+      .put("mode2",autoM0(2)?"m0_short":"default").toString();
+   }catch(Exception ex){return "{}";}
+  }
+  @JavascriptInterface public void setAutoPlcModes(String first,String second){
+   if(!validMode(first)||!validMode(second))return;
+   plcPreferences().edit().putBoolean("m0_id1","m0_short".equals(first))
+     .putBoolean("m0_id2","m0_short".equals(second)).apply();
+   invalidateReads();
+   emit("plcPort","PLC 통신 모드 변경 · 다음 자동 점검에서 ID 1·2 재확인");
+  }
   /** Read only the physically connected N4D4F64 IDs; FC03 map unchanged. */
   @JavascriptInterface public void readPlc(String mode1,String mode2,int boardCount){
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
