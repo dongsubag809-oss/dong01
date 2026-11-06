@@ -213,4 +213,28 @@ assert(!nativeController.includes("noLoadBench&&boardCount!=1"),"ID2 bench mode 
 assert(nativeController.includes("outputCommandPending.compareAndSet(false,true)"),"Manual output must queue during automatic scan");
 assert(nativeController.includes("!outputCommandPending.get()"),"Automatic polls must yield to pending output");
 assert(nativeController.includes("noLoadMultiOutput"),"No-load mode lifetime must remain session-scoped");
+// Manual page must have its own arm controls; no hidden I/O trip is required.
+assert(html.includes('id="manualOutputBadge"')&&html.includes('id="manualOutputStatus"'),"Manual output status must be visible next to greenhouse controls");
+assert(html.includes('id="manualNoLoadAck"'),"Manual page needs explicit no-load confirmation");
+assert(html.includes('onclick="startManualBench()"'),"Manual page must offer output-test activation");
+assert(html.includes('onclick="stopManualBench()"'),"Manual page must offer a working lock control");
+const mainManual=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
+assert(mainManual.includes("armRequestPending.compareAndSet(false,true)"),"Arming must queue behind automatic COM5 reads instead of rejecting busy port");
+assert(mainManual.includes("!armRequestPending.get()"),"Autopoll must yield to manual output arming");
+assert(mainManual.includes("ticket!=armSequence"),"Late/cancelled arming must remain blocked");
+node("plcBoardCount").value="1";
+node("manualNoLoadAck").checked=true;
+ctx.startManualBench();
+assert.deepStrictEqual(armingModes,["default","default",1,true],"Manual page must arm connected ID1 no-load session");
+assert(node("manualOutputBadge").textContent.includes("출력 잠금"),"Manual outputs must remain locked until native ARM_OK");
+ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"ARM_OK · ID1 actual CRC and safety checks passed"}));
+assert(node("manualOutputBadge").textContent.includes("활성"),"Manual page must show native approved status");
+assert.strictEqual(ctx.plcArmDeadline,-1,"Manual output session must not expire after 60 seconds");
+ctx.manualMappedOutput(1,0,true);
+assert(requested&&requested.id===1&&requested.ch===1&&requested.on===true,"Manual house light DO1 ON must issue real native write");
+ctx.plcWriteReceived(JSON.stringify({id:1,ch:1,status:"CONFIRMED",message:"ID1 DO01 실수신 ON"}));
+assert(node("manualOutputStatus").textContent.includes("실수신 ON"),"Write confirmation must appear on the actual Manual page");
+ctx.stopManualBench();
+assert.strictEqual(ctx.plcArmed,false,"Manual lock must revoke output authorization");
+assert(node("manualOutputBadge").textContent.includes("출력 잠금"),"Manual page must reflect revocation immediately");
 console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded one-board ID1 test plus optional two-board DO taps and real readback.");
