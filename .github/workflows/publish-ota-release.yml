@@ -1,5 +1,8 @@
 name: Publish HMI Wi-Fi Update Release
 on:
+  push:
+    branches: [feature/v4-83-house-names]
+    paths: [.github/workflows/publish-ota-release.yml]
   workflow_dispatch:
     inputs:
       tag:
@@ -71,7 +74,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.HMI_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.HMI_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.HMI_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.10' }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
@@ -101,7 +104,7 @@ jobs:
           rm -f "$RUNNER_TEMP/hmi-sign/signing.jks"
       - name: Create single ZIP distribution with installation guide
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.10' }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/hmi-package"
@@ -144,6 +147,10 @@ jobs:
             "V5.09: independent COM6 sensor driver/fd; house1 read-only FC03/04 acquisition, 4800/9600 ID1..247 search, raw TX/RX/CRC diagnosis, cancellation/reconnect and missing-data clearing" \
             "V5.09 verification: sensor model map remains unconfirmed; preview until local OLED agreement acknowledgment, then native-only house1 gauges and persistent history. No sensor ID writes or temperature/humidity-driven outputs in this release." \
             "V5.09 review: COM5 serial.c/SerialPort/Modbus/RemoteGateway/mobile/PLC outputs and interlocks preserved; prevent PLC/sensor path collision. Tests: sensor Java42, native PTY18 plus read-only wire capture, automation158, gateway TLS41, HMI/UI regressions, release build/lint/signing." \
+            "V5.10: supplied RS485 sensor manual takes precedence; FC03 RH0000/T0001 signed temp and /10 scales, exact FC06 ID0100 and baud0101, 2400/4800/9600 with required sensor power cycle" \
+            "V5.10: fixed sensor ID1/2/3/4/5 to greenhouse1/2/3/4/5, independent received values and persistent history; existing V5.09 settings migrated, no values synthesized for missing houses" \
+            "V5.10: isolated single-sensor setup, target-ID collision guard, durable pending-before-write, exactly-once command, no retry after unknown response/restart, two fresh new-setting reads after power cycle and old-setting recovery" \
+            "V5.10 review: COM5 serial/Modbus/PLC outputs/phone gateway unchanged; sensor Java90, JNI PTY25, automation/SQL177, HTTPS41, Korean/touch UI and 1024x600/800x600 layout checks. Physical COM6/sensor power-cycle behavior remains unverified." \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag targets the audited source commit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -186,17 +193,20 @@ jobs:
             "12. 실제 센서 미수신은 0이 아닌 미수신/빈 구간으로 표시합니다. 설정값은 그래프 점선이며 실제 측정값으로 사용하지 않습니다. PLC ON 누적은 실제 DO 회신 구간 기준이며 물리적 부하 운전시간 실측이 아닙니다." \
             "13. 다른 메뉴를 열어도 앱이 실행되는 동안 기록과 예약 판단을 계속합니다. 앱 재시작·정전·통신 복구만으로 자동운전을 재개하지 않습니다. 앱 종료·전원 상실 시에는 별도 하드웨어 보호가 필요합니다." \
             "" \
-            "V5.09 COM6 온습도 연결" \
-            "1. 설치 후 COM6의 /dev/ttyS6 후보 경로에서 ID1, 9600bps, 8N1, FC03, 습도0000/온도0001, 각 ÷10 읽기를 시도합니다. 센서나 PLC 쓰기 명령은 전송하지 않습니다." \
-            "2. 온습도 메뉴 > 1번동 내부 온습도 COM6에서 실제 장치 경로와 ID/속도를 설정합니다. /dev/ttyS6는 COM6 매핑 확정값이 아닙니다. OPEN_FAILED errno=2이면 경로 없음, errno=13이면 장치 권한을 확인하세요." \
-            "3. 연결·설정 적용 후 응답이 없으면 ID·속도 자동 검색을 누르세요. 선택한 기능코드/맵으로 ID1~247, 9600·4800을 읽습니다. 최대 약 2분, 취소 가능합니다. 필요 시 FC04 또는 다른 문서 기반 시험맵을 선택해 다시 검색하세요." \
-            "4. 시험 수신값이 센서 OLED 온도·습도와 일치하는지 확인한 뒤 체크 > OLED 일치 확인·이력 연결을 누르세요. 그때부터 1번동 원형계기판·일/주/월 이력에 기록합니다. 그 전의 미확정 값은 이력에 저장하지 않습니다." \
-            "5. 원문·오류 진단을 열면 TX/RX와 CRC·타임아웃·예외코드가 보입니다. 미수신은 0이 아닌 미수신으로 표시합니다. 경로/ID/맵 변경 또는 새 검색은 일치 확인을 초기화합니다." \
-            "6. 센서 현재 ID를 읽기 검색할 수 있습니다. ID 변경 주소는 해당 구매품의 제조사 맵이 확정되지 않아 쓰기는 제공하지 않습니다. 온습도 조건의 실제 출력은 잠금이며 기존 시간 예약·수동 운전은 유지됩니다." \
-            "7. 센서 모듈은 COM5 PLC와 별도 fd/스레드/네이티브 라이브러리를 사용합니다. APK 내부에 ARMv7/ARM64 센서 드라이버가 포함됩니다. 외부 Windows DLL/USB 드라이버는 HMI 내장 COM6 사용에 필요하지 않습니다." \
+            "V5.10 COM6 온습도 5동 환경 설정" \
+            "1. ID1→1동, ID2→2동, ID3→3동, ID4→4동, ID5→5동 내부 온습도로 고정되어 있습니다. 기본은 9600bps, 8N1이며 기존 저장 장치 경로·속도는 이관합니다. 미연결 동에는 값을 만들지 않습니다." \
+            "2. 환경 모니터링에서 COM6 실제 장치를 확인하세요. /dev/ttyS6는 후보 경로로, 외부 COM6와의 대응은 현장 확인이 필요합니다. COM5 PLC 경로와 중복은 차단합니다." \
+            "3. 새 센서는 대상 동 선택 > 신규 센서 1대 설정 시작 > 다른 센서를 버스에서 분리 > 새 센서 한 대만 연결 순서로 진행합니다. 이 모드에서는 COM6의 다른 동 조회/이력을 잠시 중지합니다." \
+            "4. 현재 ID·속도는 기본 ID1/9600 또는 읽기 검색으로 확인합니다. 단일 연결 확인 체크 후 선택 동 번호로 ID 변경을 누르세요. 5동이면 ID5로 설정합니다. 등록 ID와 동 번호는 임의로 뒤바꿀 수 없습니다." \
+            "5. 센서 전원을 껐다 켠 다음 변경 결과 확인을 누르세요. 새 설정에서 실제 응답을 2회 받은 후 확인합니다. 그 뒤 필요하면 속도도 2400/4800/9600 중 변경하고 전원 재인가·결과 확인을 반복합니다." \
+            "6. 해당 동 등록·전체 감시 재개를 눌러 기존 센서들을 다시 연결하세요. 모든 센서의 속도를 9600bps로 통일하는 구성을 권장합니다. 신규 설정 중 임시 ID의 값은 어느 동 이력에도 넣지 않습니다." \
+            "7. 명령은 1회만 전송합니다. 무응답이나 앱 재시작 시 자동 재전송하지 않습니다. 보류 변경의 새 설정을 실제 수신으로 확인해야 합니다. 기존 설정에서만 응답하면 기존 응답 설정 복구를 사용할 수 있습니다." \
+            "8. 실제 수신값은 동별 계기판과 일/주/월 이력에 연결됩니다. RX/TX/CRC/예외·오류 진단과 기존 시간 예약·수동·휴대폰·정역 인터록은 유지합니다. 온습도 조건의 실제 자동 출력과 리미트 미확인 자동 모터는 잠금 상태입니다." \
+            "9. 공급 문서의 읽기 예제에는 습도 바이트와 CRC 오기가 한 곳 있습니다. 프로그램은 실제 바이트로 CRC를 직접 계산합니다. 문서 근거와 정정 내용은 SENSOR_PROTOCOL_REGISTRY.txt에 기록했습니다." \
+            "10. APK 안에 ARMv7/ARM64 네이티브 센서 모듈이 포함됩니다. 내장 COM6에는 외부 Windows DLL/USB 드라이버 설치가 필요하지 않습니다. 센서 전원 재인가는 사용자가 실제로 수행해야 합니다." \
             "" \
             "검증 범위" \
-            "자동제어 158건(조건/예약/실제 제어 관리자/실제 저장 SQL 재열기), 터치 UI·그래프·기존 HMI/모바일 회귀, 41건 TLS/HTTP 통신, Modbus CRC/64채널 파싱, Android 릴리스 빌드와 린트를 확인했습니다." \
+            "센서 Java90건·JNI/PTY25건, 자동제어 177건(5동 실제 저장 SQL/조건/예약/실제 제어 관리자), 터치 UI·그래프·기존 HMI/모바일 회귀, 41건 TLS/HTTP 통신, Modbus CRC/64채널 파싱, Android 릴리스 빌드와 린트를 확인했습니다." \
             "실제 IXP101H1 AndroidKeyStore, 휴대폰 브라우저 인증서 신뢰, 현장 공유기/VPN 및 PLC 부하 동작은 현물 미검증입니다." \
             "변경 및 검토 이력은 VERSION_HISTORY.txt 한 파일에서 관리합니다. 빌드 소스 커밋은 BUILD_SOURCE.txt를 확인하세요." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
@@ -213,7 +223,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.10' }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

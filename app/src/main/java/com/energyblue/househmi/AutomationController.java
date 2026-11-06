@@ -32,7 +32,7 @@ public final class AutomationController implements AutoCloseable {
  private final long[] sensorAt=new long[5],sensorMono=new long[5];
  /** Only native CRC-validated, locally confirmed sensor mappings enter history. */
  public void sensor(int house,double temperature,double humidity,long at){
-  if(closed||house!=1||!AutomationLogic.finite(temperature)||!AutomationLogic.finite(humidity)||temperature< -40||temperature>80||humidity<0||humidity>100)return;
+  if(closed||house<1||house>5||!AutomationLogic.finite(temperature)||!AutomationLogic.finite(humidity)||temperature< -40||temperature>80||humidity<0||humidity>100)return;
   engine.execute(()->{int i=house-1;temperatures[i]=temperature;humidities[i]=humidity;sensorAt[i]=at;sensorMono[i]=SystemClock.elapsedRealtime();});
   historyWorker.execute(()->{try{store.sensor(house,temperature,humidity,at);}catch(Exception ex){message="온습도 이력 저장 오류: "+ex.getMessage();}});
  }

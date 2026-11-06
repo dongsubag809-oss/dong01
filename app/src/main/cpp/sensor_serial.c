@@ -36,7 +36,7 @@ static int await_fd(int target,short events,int64_t deadline){
 static int fd = -1;
 static speed_t speed_of(int baud) {
  switch (baud) {
- case 4800:return B4800; case 9600:return B9600; case 19200:return B19200; case 38400:return B38400;
+ case 2400:return B2400; case 4800:return B4800; case 9600:return B9600; case 19200:return B19200; case 38400:return B38400;
  case 57600:return B57600; case 115200:return B115200; default:return 0;
  }
 }
@@ -130,5 +130,54 @@ JNIEXPORT jbyteArray JNICALL Java_com_energyblue_househmi_SensorSerial_nativeRea
  }
  jbyteArray out=(*env)->NewByteArray(env,(jsize)received);
  if(out)(*env)->SetByteArrayRegion(env,out,0,(jsize)received,(jbyte*)response);
+ return out;
+}
+
+/* Supplier-manual FC06 settings, exactly once. Java controller persists pending first. */
+JNIEXPORT jbyteArray JNICALL Java_com_energyblue_househmi_SensorSerial_nativeSettingExchange(
+ JNIEnv *env,jclass cls,jbyteArray request,jint timeout_ms){
+ (void)cls;
+ if(fd<0){raise_io(env,"COM6_NOT_OPEN");return NULL;}
+ if(!request||(*env)->GetArrayLength(env,request)!=8){
+  raise_io(env,"INVALID_OUTPUT_LENGTH");return NULL;
+ }
+ jbyte bytes[8];
+ (*env)->GetByteArrayRegion(env,request,0,8,bytes);
+ unsigned char *q=(unsigned char*)bytes;
+ int address=(q[2]<<8)|q[3],value=(q[4]<<8)|q[5],fc=q[1];
+ unsigned int crc=0xffff;
+ for(int i=0;i<6;i++){crc^=q[i];for(int j=0;j<8;j++)crc=(crc&1)?(crc>>1)^0xa001:crc>>1;}
+ if(q[0]<1||q[0]>247||fc!=6||!((address==0x100&&value>=1&&value<=247)||(address==0x101&&value<=2))
+    ||q[6]!=(crc&255)||q[7]!=(crc>>8)){
+  raise_io(env,"SENSOR_SETTING_WHITELIST_ENFORCED");return NULL;
+ }
+ if(timeout_ms<100||timeout_ms>5000){raise_io(env,"INVALID_WRITE_TIMEOUT");return NULL;}
+ int64_t deadline=now_msec()+timeout_ms;
+ if(tcflush(fd,TCIFLUSH)!=0){raise_io(env,"OUTPUT_RX_FLUSH_FAILED");return NULL;}
+ size_t sent=0;
+ while(sent<8){
+  int ok=await_fd(fd,POLLOUT,deadline);
+  if(ok<=0){raise_io(env,ok==0?"OUTPUT_TX_TIMEOUT":"OUTPUT_TX_POLL_ERROR");return NULL;}
+  ssize_t n=write(fd,q+sent,8-sent);
+  if(n>0){sent+=(size_t)n;continue;}
+  if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;
+  raise_io(env,"OUTPUT_WRITE_FAILED");return NULL;
+ }
+ unsigned char response[8]={0};size_t got=0,need=2;
+ while(got<need){
+  int ok=await_fd(fd,POLLIN,deadline);
+  if(ok<=0){raise_io(env,ok==0?"OUTPUT_ECHO_TIMEOUT":"OUTPUT_ECHO_POLL_ERROR");return NULL;}
+  ssize_t n=read(fd,response+got,need-got);
+  if(n>0){got+=(size_t)n;}
+  else if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))continue;
+  else if(n<0){raise_io(env,"OUTPUT_READ_FAILED");return NULL;}
+  if(got==2&&need==2){
+   if(response[1]==(unsigned char)(fc|0x80))need=5;
+   else if(response[1]==fc)need=8;
+   else{raise_io(env,"OUTPUT_RESPONSE_FUNC_MISMATCH");return NULL;}
+  }
+ }
+ jbyteArray out=(*env)->NewByteArray(env,(jsize)need);
+ if(out)(*env)->SetByteArrayRegion(env,out,0,(jsize)need,(jbyte*)response);
  return out;
 }

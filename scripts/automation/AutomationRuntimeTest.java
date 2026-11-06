@@ -18,6 +18,7 @@ public final class AutomationRuntimeTest {
   public boolean dispatch(int h,int s,boolean v){if(!allowed)return false;value=v;if(v)on.incrementAndGet();else off.incrementAndGet();controller.outputResult(1,s+1,"CONFIRMED");return true;}
   public void emit(String event,String value){message=value;}
  }
+ static boolean packet(Host h,int id){try{return new JSONObject(h.message).optInt("requestId")==id;}catch(Exception ex){return false;}}
  static AutomationController setup(String name,JSONObject rule,Host host)throws Exception{
   Context context=new Context(root+"/"+name);AutomationStore store=new AutomationStore(context);store.saveRules(new JSONArray().put(rule));store.close();AutomationController c=new AutomationController(context,host);host.controller=c;Thread.sleep(200);return c;
  }
@@ -41,6 +42,17 @@ public final class AutomationRuntimeTest {
   JSONObject history=db.history(1,0,"day","");check(history.getLong("observedMs")==20000,"Disconnected observation gap is not filled");check(history.getLong("onMs")==15000,"ON accumulation from received intervals only");JSONArray env=history.getJSONArray("environment");check(env.length()==1,"Minute samples bucket into requested history period");check(Math.abs(env.getJSONObject(0).getDouble("temperature")-80.0/3)<.0001,"Weighted means use sample counts, not mean of means");check(env.getJSONObject(0).getDouble("tMin")==10&&env.getJSONObject(0).getDouble("tMax")==50,"Min/max survive aggregation");
   JSONObject monthly=db.history(1,0,"month","");long bucket=monthly.getJSONArray("environment").getJSONObject(0).getLong("ts");Calendar day=Calendar.getInstance(AutomationLogic.ZONE);day.setTimeInMillis(bucket);check(day.get(Calendar.HOUR_OF_DAY)==0,"Monthly sensor buckets aligned to KST midnight");
   check(db.history(2,0,"day","").getJSONArray("environment").length()==0,"No sensor data fabricated for another house");db.close();db=new AutomationStore(context);check(db.loadRules().length()==1&&db.history(1,0,"day","").getLong("onMs")==15000,"History and rules persist after closing/reopening DB");db.close();
+  Host five=new Host();AutomationController fiveController=setup("five-sensors",rule(0),five);
+  try{
+   for(int h=1;h<=5;h++)fiveController.sensor(h,20+h,60+h,System.currentTimeMillis());
+   for(int h=1;h<=5;h++){
+    final int id=900+h;fiveController.snapshot(h,0,"day","",id);await(()->packet(five,id),"Sensor snapshot received for house "+h);
+    JSONObject value=new JSONObject(five.message);check(value.getDouble("temperature")==20+h&&value.getDouble("humidity")==60+h,"Each house has its own live received values");
+    JSONArray points=value.getJSONObject("history").getJSONArray("environment");check(points.length()==1&&points.getJSONObject(0).getDouble("temperature")==20+h,"Native sensor data saved in matching house SQL history");
+   }
+   fiveController.sensorDisconnected(3);fiveController.snapshot(3,0,"day","",999);await(()->packet(five,999),"Disconnected snapshot received");check(new JSONObject(five.message).isNull("temperature"),"Disconnect clears only affected house current value");
+   fiveController.snapshot(5,0,"day","",1000);await(()->packet(five,1000),"Unaffected house snapshot");check(new JSONObject(five.message).getDouble("temperature")==25,"Other house current data survives disconnect");
+  }finally{fiveController.close();}
   Host host=new Host();AutomationController c=setup("timer",rule(0),host);
   Host timerHost=host;
   try{Thread.sleep(1100);check(timerHost.on.get()==0,"Saved configuration must not auto-start");c.start();await(()->timerHost.on.get()==1,"Explicit start dispatches one scheduled ON");await(()->timerHost.off.get()==1,"Maximum runtime dispatches OFF");Thread.sleep(1300);check(timerHost.on.get()==1,"Max-runtime lock prevents repeated immediate ON");}finally{c.close();}

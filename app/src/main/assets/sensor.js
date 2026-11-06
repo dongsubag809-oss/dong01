@@ -1,4 +1,4 @@
-/* Native-only COM6 input; values are never set by the web page. Android 7 syntax. */
+/* Supplier-manual COM6 setup; native callbacks are the only measurement source. */
 window.EBSensor=(function(){
  var latest=null,dirty=false,loaded=false;
  function e(id){return document.getElementById(id);}
@@ -6,49 +6,44 @@ window.EBSensor=(function(){
  function esc(s){return String(s===null||s===undefined?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
  function init(){
   if(!e('sensorRoot'))return;
-  e('sensorRoot').innerHTML='<div class="panel"><h3>1번동 내부 온습도 · COM6 RS485</h3><p class="muted">기본 /dev/ttyS6는 연결 시도용 경로입니다. 외부 COM6와 다르면 아래 실제 장치를 선택하세요. COM5 PLC 경로는 차단됩니다.</p><div class="auto-form" style="margin-top:12px"><div class="auto-field"><label>센서 실제 장치<select id="sensorPath" onchange="EBSensor.dirty()"></select></label><button onclick="EBSensor.reload()">장치 목록·저장 설정 다시 읽기</button></div><div class="auto-field"><label>속도<select id="sensorBaud" onchange="EBSensor.dirty()"><option>9600</option><option>4800</option></select></label><label>현재 센서 ID<select id="sensorId" onchange="EBSensor.dirty()"></select></label></div><div class="auto-field"><label>읽기 기능<select id="sensorFc" onchange="EBSensor.dirty()"><option value="3">FC03 · Holding</option><option value="4">FC04 · Input</option></select></label><label>시험 통신맵<select id="sensorMap" onchange="EBSensor.dirty()"><option value="h0t1">습도 0000 / 온도 0001 · ÷10</option><option value="t0h1">온도 0000 / 습도 0001 · ÷10</option></select></label></div><div class="auto-field"><p id="sensorMessage" style="overflow-wrap:anywhere">센서 상태 확인 중</p><p id="sensorConfigStatus" class="auto-muted"></p><p id="sensorEdit" class="auto-dirty"></p></div></div><div class="auto-actions" style="margin-top:12px"><button onclick="EBSensor.connect()">연결·설정 적용</button><button id="sensorSearch" onclick="EBSensor.search()">ID·속도 자동 검색</button><button onclick="EBSensor.cancel()">검색 취소</button><button onclick="EBSensor.stop()">감시 중지</button></div><div class="auto-actions" style="margin-top:12px"><label><input type="checkbox" id="sensorAck">센서 OLED와 아래 온도·습도 순서와 값이 일치합니다</label><button id="sensorConfirm" onclick="EBSensor.confirm()">OLED 일치 확인·이력 연결</button></div><p class="muted">ID 검색은 현재 ID와 1~247을 선택 기능으로 조회하며 9600·4800bps를 확인합니다. ID 쓰기는 제조사·모델 확정 전까지 잠금입니다. 온습도 조건의 자동 출력은 이번 통신 확인 버전에서 실행하지 않습니다.</p><div class="auto-metrics" style="margin-top:12px"><div>온도<strong id="sensorTemp">미수신</strong></div><div>습도<strong id="sensorHum">미수신</strong></div><div>최근 수신<strong id="sensorAt">없음</strong></div></div><details style="margin-top:12px"><summary>송수신 원문·오류 진단</summary><pre id="sensorRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px">수신 없음</pre></details></div>';
-  var options='';for(var id=1;id<=247;id++)options+='<option>'+id+'</option>';e('sensorId').innerHTML=options;
-  reload();setInterval(refresh,2000);
+  e('sensorRoot').innerHTML='<div class="panel"><h3>COM6 온습도 · 5동 센서 등록·설정</h3><p class="muted">ID 1 → 1동 / ID 2 → 2동 / ID 3 → 3동 / ID 4 → 4동 / ID 5 → 5동. 응답 없는 동은 미수신입니다.</p><div class="auto-toolbar" style="margin:12px 0"><label>대상 동<select id="sensorHouse" onchange="EBSensor.selectHouse(this.value)"></select></label><span id="sensorSetupStatus" class="auto-pill"></span></div><div class="auto-form"><div class="auto-field"><label>센서 실제 장치<select id="sensorPath" onchange="EBSensor.dirty()"></select></label><p class="auto-muted">기본 /dev/ttyS6는 후보 경로입니다. COM5 PLC 경로와 중복은 차단합니다.</p><button onclick="EBSensor.reload()">장치·저장 설정 다시 읽기</button></div><div class="auto-field"><label>현재 센서 속도<select id="sensorBaud" onchange="EBSensor.dirty()"><option>9600</option><option>4800</option><option>2400</option></select></label><label>현재 ID<select id="sensorId" onchange="EBSensor.dirty()"></select></label><small>일반 감시 ID는 동 번호로 고정됩니다. 신규 설정 중에는 공장 ID 또는 검색한 ID를 사용합니다.</small></div><div class="auto-field"><label>읽기 기능<select id="sensorFc" onchange="EBSensor.dirty()"><option value="3">FC03 · 제공 매뉴얼</option><option value="4">FC04 · 이전 시험 설정</option></select></label><label>수신맵<select id="sensorMap" onchange="EBSensor.dirty()"><option value="h0t1">습도 0000 / 온도 0001 · ÷10</option><option value="t0h1">온도 0000 / 습도 0001 · 이전 시험</option></select></label></div><div class="auto-field"><p id="sensorMessage" style="overflow-wrap:anywhere">상태 확인 중</p><p id="sensorConfigStatus" class="auto-muted"></p><p id="sensorEdit" class="auto-dirty"></p></div></div><div class="auto-actions" style="margin-top:12px"><button id="sensorConnect" onclick="EBSensor.connect()">수신 설정 저장·연결</button><button onclick="EBSensor.stop()">선택 동 감시 중지</button></div><div class="auto-chart-card" style="margin-top:14px"><h3>새 센서 설치 순서</h3><p class="auto-muted">1. 대상 동 선택 → 신규 설정 시작 → COM6에 새 센서 한 대만 연결<br>2. 현재 ID·속도 확인 → ID를 동 번호로 변경 → 센서 전원 껐다 켜기 → 변경 결과 확인<br>3. 필요하면 속도 변경 → 다시 전원 껐다 켜기 → 결과 확인 → 해당 동 등록·전체 감시 재개</p><div class="auto-actions" style="margin-top:10px"><button id="sensorBegin" onclick="EBSensor.begin()">신규 센서 1대 설정 시작</button><button id="sensorSearch" onclick="EBSensor.search()">현재 ID·속도 검색</button><button onclick="EBSensor.cancel()">검색 취소</button></div><label style="display:block;margin:14px 0"><input id="sensorOne" type="checkbox">COM6 버스에서 다른 센서를 분리하고 설정할 센서 한 대만 연결했습니다.</label><div class="auto-actions"><button id="sensorWriteId" onclick="EBSensor.writeId()">선택 동 번호로 ID 변경</button><label>새 속도<select id="sensorNewBaud"><option>9600</option><option>4800</option><option>2400</option></select></label><button id="sensorWriteBaud" onclick="EBSensor.writeBaud()">센서 속도 변경</button></div><p id="sensorPending" class="auto-notice" style="margin:12px 0;overflow-wrap:anywhere">보류 변경 없음</p><div class="auto-actions"><button id="sensorVerify" onclick="EBSensor.verify()">전원 재인가 후 변경 결과 확인</button><button id="sensorRestore" onclick="EBSensor.restore()">기존 응답 설정으로 복구</button><button id="sensorFinish" onclick="EBSensor.finish()">해당 동 등록·전체 감시 재개</button><button id="sensorLeave" onclick="EBSensor.leave()">신규 설정 종료</button></div><p class="auto-muted">변경 명령은 한 번만 전송합니다. 무응답·앱 재시작 시에도 자동 재전송하지 않습니다. 쓰기 응답만으로 적용 완료 처리하지 않으며, 전원 재인가 후 새 설정에서 2회 수신을 확인합니다. 여러 센서를 함께 연결한 상태에서 ID를 변경하지 마세요.</p></div><div class="auto-metrics" style="margin-top:12px"><div>선택 센서 온도<strong id="sensorTemp">미수신</strong></div><div>습도<strong id="sensorHum">미수신</strong></div><div>최근 수신<strong id="sensorAt">없음</strong></div></div><div class="auto-actions"><label><input type="checkbox" id="sensorAck">센서 OLED와 현재 온도·습도가 일치합니다.</label><button id="sensorConfirm" onclick="EBSensor.confirm()">OLED 일치 확인</button></div><p class="auto-muted">신규 설정 중의 임시 ID 수신은 미등록이며 동 계기판·이력에 반영하지 않습니다. 온습도 조건의 실제 자동 출력은 기존 잠금 상태를 유지합니다.</p><div class="auto-scroll-chart"><table class="auto-table"><thead><tr><th>동 / 고정 ID</th><th>속도</th><th>상태</th><th>온도 / 습도</th></tr></thead><tbody id="sensorRegistry"></tbody></table></div><details style="margin-top:12px"><summary>송수신 원문·오류 진단</summary><pre id="sensorRaw" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px"></pre></details></div>';
+  var ids='',houses='';for(var id=1;id<=247;id++)ids+='<option>'+id+'</option>';for(id=1;id<=5;id++)houses+='<option value="'+id+'">'+id+'동 · ID '+id+'</option>';
+  e('sensorId').innerHTML=ids;e('sensorHouse').innerHTML=houses;reload();setInterval(refresh,2000);
  }
- function refresh(){try{var h=window.NativeDiagnostics;if(h&&typeof h.sensorInfo==='function')receive(h.sensorInfo());}catch(ex){e('sensorMessage').textContent='센서 상태 조회 오류: '+ex.message;}}
+ function refresh(){try{var h=window.NativeDiagnostics;if(h&&typeof h.sensorInfo==='function')receive(h.sensorInfo());}catch(ex){e('sensorMessage').textContent='센서 조회 오류: '+ex.message;}}
  function reload(){dirty=false;loaded=false;refresh();}
- function mark(){dirty=true;e('sensorAck').checked=false;e('sensorEdit').textContent='변경값 미적용 · 연결·설정 적용을 누르세요.';}
- function connect(){
-  e('sensorAck').checked=false;dirty=false;loaded=false;
-  host('configureSensor',[JSON.stringify({path:e('sensorPath').value,baud:+e('sensorBaud').value,id:+e('sensorId').value,fc:+e('sensorFc').value,map:e('sensorMap').value,enabled:true})]);
- }
- function search(){if(dirty){e('sensorMessage').textContent='변경한 설정을 먼저 적용하세요.';return;}host('searchSensor');}
- function confirm(){if(dirty||!e('sensorAck').checked){e('sensorMessage').textContent='현재 설정의 수신값과 OLED 일치를 체크한 뒤 확인하세요.';return;}host('confirmSensorMap');}
- function fresh(){return latest&&latest.connected&&latest.receivedAt&&new Date().getTime()-latest.receivedAt<10000;}
- function number(kind,unit){return fresh()&&typeof latest[kind]==='number'?latest[kind].toFixed(1)+' '+unit:'미수신';}
- function receive(raw){
-  try{
-   var data=typeof raw==='string'?JSON.parse(raw):raw,c=data.config;if(!c)return;
-   latest=data;
-   if(!dirty&&!loaded){
-    var devices=data.devices||[],all=[c.path],html='';for(var i=0;i<devices.length;i++)if(all.indexOf(devices[i])<0)all.push(devices[i]);
-    for(i=0;i<all.length;i++)html+='<option value="'+esc(all[i])+'">'+esc(all[i])+(all[i]===c.path?' · 현재 설정':'')+'</option>';
-    e('sensorPath').innerHTML=html;e('sensorPath').value=c.path;e('sensorBaud').value=String(c.baud);e('sensorId').value=String(c.id);e('sensorFc').value=String(c.fc);e('sensorMap').value=c.map;loaded=true;
-   }
-   // Discovery may select another actual ID/baud; update saved configuration only while not editing.
-   if(!dirty){e('sensorBaud').value=String(c.baud);e('sensorId').value=String(c.id);e('sensorEdit').textContent='';}
-   e('sensorMessage').textContent=data.message||'상태 확인 중';
-   e('sensorConfigStatus').textContent=(c.enabled?'감시 ON':'감시 OFF')+' · '+c.path+' · '+c.baud+'bps / ID '+c.id+' / FC0'+c.fc+' · '+(c.verified?'OLED 일치 확인됨':'시험 통신맵 · 미확정');
-   e('sensorTemp').textContent=number('temperature','°C');e('sensorHum').textContent=number('humidity','%RH');
-   e('sensorAt').textContent=fresh()?new Date(data.receivedAt).toLocaleTimeString():'없음';
-   e('sensorRaw').textContent='TX: '+(data.tx||'없음')+'\nRX: '+(data.rx||'없음')+'\n오류: '+(data.error||'없음');
-   e('sensorSearch').disabled=!!data.searching;e('sensorConfirm').disabled=!fresh()||!!data.searching||dirty;
-   if(!fresh())e('sensorAck').checked=false;
-   decorate();
-  }catch(ex){e('sensorMessage').textContent='센서 응답 표시 오류: '+ex.message;}
- }
- function decorate(){
-  if(!latest)return;var ok=fresh(),verified=latest.config.verified,label=ok?(verified?'COM6 온습도 수신':'COM6 시험 수신 · 맵 확인 전'):'COM6 센서 미수신';
-  if(e('dashSensor'))e('dashSensor').textContent=label;
-  if(e('houseTemperature1'))e('houseTemperature1').textContent=number('temperature','°C');
-  if(e('houseHumidity1'))e('houseHumidity1').textContent=number('humidity','%');
-  if(e('houseSensorStatus1'))e('houseSensorStatus1').textContent=label;
-  if(e('environmentSensor1'))e('environmentSensor1').textContent='온도 '+number('temperature','°C')+' · 습도 '+number('humidity','%RH')+' · '+(ok?(verified?'실수신 · 이력 연결':'시험 변환값 · OLED 대조 필요'):'미수신');
- }
- return {init:init,receive:receive,reload:reload,dirty:mark,connect:connect,search:search,cancel:function(){host('cancelSensorSearch');},stop:function(){host('stopSensor');},confirm:confirm,decorate:decorate};
+ function selectHouse(h){dirty=false;loaded=false;e('sensorOne').checked=false;host('selectSensorHouse',[+h]);}
+ function mark(){dirty=true;e('sensorOne').checked=false;e('sensorEdit').textContent='변경값 미적용 · 수신 설정 저장·연결을 누르세요.';}
+ function connect(){dirty=false;loaded=false;e('sensorOne').checked=false;host('configureSensor',[JSON.stringify({house:+e('sensorHouse').value,path:e('sensorPath').value,baud:+e('sensorBaud').value,id:+e('sensorId').value,fc:+e('sensorFc').value,map:e('sensorMap').value,enabled:true})]);}
+ function clean(){if(dirty){e('sensorMessage').textContent='변경한 수신 설정을 먼저 저장하세요.';return false;}return true;}
+ function begin(){if(clean())host('beginSensorSetup',[+e('sensorHouse').value]);}
+ function search(){if(clean())host('searchSensor');}
+ function confirm(){if(!clean()||!e('sensorAck').checked){e('sensorMessage').textContent='현재 수신값과 OLED 일치 확인을 체크하세요.';return;}host('confirmSensorMap');}
+ function writeId(){if(clean())host('changeSensorId',[latest.setup,!!e('sensorOne').checked]);e('sensorOne').checked=false;}
+ function writeBaud(){if(clean())host('changeSensorBaud',[+e('sensorNewBaud').value,!!e('sensorOne').checked]);e('sensorOne').checked=false;}
+ function fresh(d){return d&&d.connected&&d.receivedAt&&new Date().getTime()-d.receivedAt<12000;}
+ function number(d,kind,unit){return fresh(d)&&typeof d[kind]==='number'?d[kind].toFixed(1)+' '+unit:'미수신';}
+ function receive(raw){try{
+  var d=typeof raw==='string'?JSON.parse(raw):raw,c=d.config;if(!c)return;latest=d;
+  if(!dirty&&!loaded){var devices=d.devices||[],all=[c.path],html='';for(var i=0;i<devices.length;i++)if(all.indexOf(devices[i])<0)all.push(devices[i]);for(i=0;i<all.length;i++)html+='<option value="'+esc(all[i])+'">'+esc(all[i])+'</option>';e('sensorPath').innerHTML=html;e('sensorPath').value=c.path;e('sensorBaud').value=String(c.baud);e('sensorId').value=String(c.id);e('sensorFc').value=String(c.fc);e('sensorMap').value=c.map;loaded=true;}
+  if(!dirty){e('sensorHouse').value=String(d.selected||c.house||1);e('sensorId').value=String(c.id);e('sensorBaud').value=String(c.baud);e('sensorEdit').textContent='';}
+  e('sensorConfirm').disabled=!fresh(d)||!!d.pending||!!d.searching||dirty;e('sensorId').disabled=!d.setup;e('sensorSetupStatus').textContent=d.setup?'신규 '+d.setup+'동 단일 센서 설정 중':'ID1~5 전체 감시';
+  e('sensorMessage').textContent=d.message||'';e('sensorConfigStatus').textContent=c.path+' · '+c.baud+'bps · 현재 ID '+c.id+' → '+c.house+'동'+(d.setup?' · 임시 수신/미등록':' · 고정 ID 수신');
+  e('sensorTemp').textContent=number(d,'temperature','°C');e('sensorHum').textContent=number(d,'humidity','%RH');e('sensorAt').textContent=fresh(d)?new Date(d.receivedAt).toLocaleTimeString():'없음';
+  e('sensorRaw').textContent='TX: '+(d.tx||'없음')+'\nRX: '+(d.rx||'없음')+'\n오류: '+(d.error||'없음');
+  var p=d.pending,busy=!!d.searching,setup=!!d.setup,here=d.setup===(d.selected||c.house);
+  e('sensorPending').textContent=p?'보류 변경 · '+p.house+'동 / '+(p.register===256?'ID':'속도')+' · '+p.old.id+'번 '+p.old.baud+'bps → '+p.next.id+'번 '+p.next.baud+'bps · '+p.phase+' · 센서 전원 재인가 후 결과 확인':'보류 변경 없음';
+  e('sensorBegin').disabled=setup||busy||!!p;e('sensorSearch').disabled=!here||busy||!!p;e('sensorConnect').disabled=busy||!!p;
+  e('sensorWriteId').disabled=!here||busy||!!p||dirty;e('sensorWriteBaud').disabled=!here||busy||!!p||dirty;
+  e('sensorVerify').disabled=!p||busy;e('sensorRestore').disabled=!p||busy||!d.oldConfirmed;e('sensorFinish').disabled=!here||busy||!!p||!fresh(d)||c.id!==c.house;e('sensorLeave').disabled=!setup||busy||!!p;
+  var rows=d.houses||[],table='';for(i=0;i<rows.length;i++){var r=rows[i];table+='<tr><td>'+r.house+'동 / ID '+r.house+'</td><td>'+r.config.baud+'bps</td><td>'+esc(d.setup?'설정 중 · 이력 중지':r.connected?'수신 정상':r.status||'미수신')+'</td><td>'+esc(r.registered?number(r,'temperature','°C')+' / '+number(r,'humidity','%RH'):'미등록')+'</td></tr>';}e('sensorRegistry').innerHTML=table;decorate();
+ }catch(ex){e('sensorMessage').textContent='센서 표시 오류: '+ex.message;}}
+ function decorate(){if(!latest)return;var rows=latest.houses||[],count=0;for(var i=0;i<rows.length;i++){
+  var r=rows[i],h=r.house,ok=!latest.setup&&!latest.pending&&r.registered&&fresh(r)&&r.config.verified,label=latest.setup?'신규 설정 중 · 이력 중지':ok?'ID '+h+' 온습도 실수신':'ID '+h+' 센서 미수신';if(ok)count++;
+  if(e('houseTemperature'+h))e('houseTemperature'+h).textContent=ok?number(r,'temperature','°C'):'미수신';
+  if(e('houseHumidity'+h))e('houseHumidity'+h).textContent=ok?number(r,'humidity','%'):'미수신';
+  if(e('houseSensorStatus'+h))e('houseSensorStatus'+h).textContent=label;
+  if(e('environmentSensor'+h))e('environmentSensor'+h).textContent=label+(ok?' · '+number(r,'temperature','°C')+' / '+number(r,'humidity','%RH'):'');
+ }if(e('dashSensor'))e('dashSensor').textContent='COM6 센서 '+count+'/5동 수신';}
+ return {init:init,receive:receive,reload:reload,dirty:mark,selectHouse:selectHouse,connect:connect,begin:begin,search:search,writeId:writeId,writeBaud:writeBaud,confirm:confirm,cancel:function(){host('cancelSensorSearch');},stop:function(){host('stopSensor');},verify:function(){host('verifySensorChange');},restore:function(){host('restoreSensorOld');},finish:function(){host('finishSensorSetup');},leave:function(){host('leaveSensorSetup');},decorate:decorate};
 })();

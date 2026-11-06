@@ -13,7 +13,7 @@ def crc(data):
   for _ in range(8):c=(c>>1)^0xa001 if c&1 else c>>1
  return c.to_bytes(2,'little')
 def framed(data):return data+crc(data)
-errors=[];stop=threading.Event();requests=[0,0]
+errors=[];stop=threading.Event();requests=[0,0,0]
 def emulate(fd,sensor):
  pending=b''
  while not stop.is_set():
@@ -24,7 +24,11 @@ def emulate(fd,sensor):
     q,pending=pending[:8],pending[8:]
     if q[-2:]!=crc(q[:6]):raise AssertionError('request CRC')
     if sensor:
-     if q[1] not in (3,4):raise AssertionError('write reached sensor wire')
+     if q[1]==6:
+      reg=int.from_bytes(q[2:4],'big');value=int.from_bytes(q[4:6],'big')
+      if not ((reg==256 and 1<=value<=247) or (reg==257 and value<=2)):raise AssertionError('illegal setting on wire')
+      requests[2]+=1;os.write(fd,q);continue
+     if q[1] not in (3,4):raise AssertionError('output write reached sensor wire')
      requests[1]+=1;n=requests[1]
      if n==4:continue
      if n==5:r=b'\x01\x03\x04'
@@ -54,8 +58,8 @@ with tempfile.TemporaryDirectory(prefix='sensor-jni-') as name:
    threading.Thread(target=emulate,args=(master,i==1),daemon=True).start()
   subprocess.run(['java','-Djava.library.path='+str(tmp),'-cp',str(classes),'com.energyblue.househmi.SensorNativeTest']+[str(a) for a in aliases],check=True,timeout=25)
   assert not errors,errors
-  assert requests[0]==2 and requests[1]==8,requests
-  print('PASS: wire capture contains only allowed read requests; no physical equipment opened')
+  assert requests[0]==2 and requests[1]==8 and requests[2]==2,requests
+  print('PASS: wire capture contains allowed reads and exact supplier ID/baud settings; no physical equipment opened')
  finally:
   stop.set()
   for alias in aliases:

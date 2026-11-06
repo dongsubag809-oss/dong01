@@ -395,13 +395,14 @@ public final class MainActivity extends Activity {
   });
   sensor=new SensorController(new SensorController.Host(){
    @Override public String plcPath(){return plcPreferences().getString("device","/dev/ttyS5");}
-   @Override public void persist(String config){getSharedPreferences("sensor_com6_v1",Context.MODE_PRIVATE).edit().putString("config",config).apply();}
+   @Override public boolean persist(String config){return getSharedPreferences("sensor_com6_v1",Context.MODE_PRIVATE).edit().putString("config",config).commit();}
    @Override public void emit(String json){MainActivity.this.emit("sensor",json);}
-   @Override public void reading(double t,double h,long at){if(automation!=null)automation.sensor(1,t,h,at);}
-   @Override public void invalidate(){if(automation!=null)automation.sensorDisconnected(1);}
+   @Override public void reading(int house,double t,double h,long at){if(automation!=null)automation.sensor(house,t,h,at);}
+   @Override public void invalidate(int house){if(automation!=null)automation.sensorDisconnected(house);}
   },new SensorController.Port(){
    @Override public String open(String path,int baud){return SensorSerial.open(path,baud);}
    @Override public byte[] read(int id,int fc,String map,int timeout)throws java.io.IOException{return SensorSerial.read(id,fc,map,timeout);}
+   @Override public byte[] setting(int id,int register,int value)throws java.io.IOException{return SensorSerial.setting(id,register,value);}
    @Override public void close(){SensorSerial.close();}
   },getSharedPreferences("sensor_com6_v1",Context.MODE_PRIVATE).getString("config","{}"));
   getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -504,6 +505,14 @@ public final class MainActivity extends Activity {
   @JavascriptInterface public void searchSensor(){if(sensor!=null)sensor.search();}
   @JavascriptInterface public void stopSensor(){if(sensor!=null)sensor.stop();}
   @JavascriptInterface public void cancelSensorSearch(){if(sensor!=null)sensor.cancelSearch();}
+  @JavascriptInterface public void selectSensorHouse(int house){if(sensor!=null)sensor.selectHouse(house);}
+  @JavascriptInterface public void beginSensorSetup(int house){if(sensor!=null)sensor.beginSetup(house);}
+  @JavascriptInterface public void finishSensorSetup(){if(sensor!=null)sensor.finishSetup();}
+  @JavascriptInterface public void leaveSensorSetup(){if(sensor!=null)sensor.leaveSetup();}
+  @JavascriptInterface public void changeSensorId(int id,boolean oneDevice){if(sensor!=null)sensor.changeId(id,oneDevice);}
+  @JavascriptInterface public void changeSensorBaud(int baud,boolean oneDevice){if(sensor!=null)sensor.changeBaud(baud,oneDevice);}
+  @JavascriptInterface public void verifySensorChange(){if(sensor!=null)sensor.verifyChange();}
+  @JavascriptInterface public void restoreSensorOld(){if(sensor!=null)sensor.restoreOld();}
   @JavascriptInterface public void confirmSensorMap(){if(sensor!=null)sensor.confirm();}
   @JavascriptInterface public String openCom5(String path,int baud){
    if(plcBusy.get()||outputCommandPending.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";
