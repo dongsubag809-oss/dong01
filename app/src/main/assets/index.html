@@ -16,7 +16,14 @@ header{min-height:74px;display:flex;align-items:center;justify-content:space-bet
 .shell{display:grid;grid-template-columns:184px minmax(0,1fr);height:calc(100vh - 74px);min-height:430px}
 nav{padding:12px 8px;border-right:1px solid var(--line);background:#102536;overflow-y:auto}
 button{cursor:pointer;border:1px solid #3f6b81;background:#23485e;border-radius:9px;color:#f4fbff;padding:11px 13px;font-size:15px;font-weight:700;min-height:43px}
-button:active{background:#316581}button.primary{background:#287e9a}button[disabled]{opacity:.45;cursor:not-allowed}
+button:active{background:#316581}button.primary{background:#287e9a}
+.phone-mode-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.phone-mode-actions button{min-width:0;font-size:14px;padding:10px 5px;background:#23485e!important;border:2px solid #496f83!important;box-shadow:none!important;overflow-wrap:anywhere}
+.phone-mode-actions button.phone-selected.monitor{background:#167147!important;border-color:#7cffc0!important;color:#ffffff!important;box-shadow:inset 0 0 0 1px #bfffe0!important}
+.phone-mode-actions button.phone-selected.control{background:#176aad!important;border-color:#9ddaff!important;color:#ffffff!important;box-shadow:inset 0 0 0 1px #c4ebff!important}
+.phone-mode-actions button.phone-selected.stopped{background:#80512c!important;border-color:#ffc07a!important;color:#ffffff!important}
+@media(max-width:510px){.phone-mode-actions{grid-template-columns:1fr}}
+button[disabled]{opacity:.45;cursor:not-allowed}
 nav button{display:block;width:100%;text-align:left;margin:4px 0 8px;font-size:14px}nav button.active{background:#287e9a;border-color:#7bcde4}
 main{overflow-y:auto;padding:14px 18px 25px}h2{font-size:22px;margin:0 0 5px}h3{font-size:17px;margin:0 0 12px}
 p{margin:5px 0 12px}.muted{color:var(--muted);font-size:13px}.warn{color:var(--gold)}
@@ -114,7 +121,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <section id="names" class="page"><h2>환경설정 · 사용자 이름 변경</h2><p class="muted">하우스 5개 이름과 각 하우스의 제어 접점 표시 이름을 자유롭게 변경합니다. 이름만 변경하며 PLC 주소와 출력 동작은 변경되지 않습니다. PLC ID 1과 ID 2의 DO01~DO64 총 128점은 고정 주소이며, 사용자 지정 이름만 변경됩니다. 장비별 실제 결선은 배선표 확인 전까지 임의 배정하지 않습니다.</p><div class="panel"><h3>하우스 이름</h3><div id="nameFields"></div><button class="primary" onclick="saveNames()">하우스 이름 저장</button><p id="nameStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>제어 접점 이름 및 DO 출력 표시</h3><label>설정할 하우스 <select id="editHouse" onchange="renderContactFields()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><div id="contactFields"></div><button class="primary" onclick="saveContactNames()">접점 이름 저장</button> <button onclick="resetContactNames()">이 동의 접점 이름 초기화</button><p id="contactStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>PLC 출력 주소 목록 · 총 128DO</h3><p class="muted">ID 1 / DO01~DO64, ID 2 / DO01~DO64. 주소는 변경 불가, 표시 이름만 편집 가능합니다. 이름을 입력해도 실제 장비 배선은 자동 변경되지 않습니다.</p><div class="row"><label>PLC ID <select id="doPlcId" onchange="renderDoRegistry()"><option value="1">ID 1</option><option value="2">ID 2</option></select></label></div><div id="doRegistry"></div><button class="primary" onclick="saveDoRegistry()">출력 이름 저장</button><p id="doRegistryStatus" class="muted"></p></div>
 <div class="panel" style="margin-top:14px"><h3>휴대폰 연동 · HTTPS</h3>
 <p class="warn">기본 OFF · 5분 유효 일회용 코드 · 2시간 세션. 원격 출력은 현장 수동운전 승인 후 가능하며, 기존 모터 정역 인터록이 그대로 적용됩니다.</p>
-<div class="row"><button class="primary" type="button" onclick="startPhone(false)">감시 접속 켜기</button><button type="button" onclick="startPhone(true)">감시+제어 접속 켜기</button><button type="button" onclick="stopPhone()">휴대폰 접속 종료</button></div>
+<div class="phone-mode-actions"><button id="phoneMonitorButton" type="button" onclick="startPhone(false)" aria-pressed="false">감시 접속 켜기</button><button id="phoneControlButton" type="button" onclick="startPhone(true)" aria-pressed="false">감시+제어 접속 켜기</button><button id="phoneStopButton" class="phone-selected stopped" type="button" onclick="stopPhone()" aria-pressed="true">휴대폰 접속 종료</button></div>
 <p id="phoneStatus" class="muted">휴대폰 접속: 꺼짐</p>
 <p id="phoneAddress" class="muted"></p><p id="phoneCode" class="warn"></p>
 <p id="phoneCertificate" class="muted" style="overflow-wrap:anywhere"></p>
@@ -433,27 +440,58 @@ function syncPhoneNames(){
   window.NativeDiagnostics.syncPhoneNames(JSON.stringify({houses:names,outputs:outputs}));
  }catch(e){}
 }
+function showPhoneMode(mode){
+ var ids=['phoneMonitorButton','phoneControlButton','phoneStopButton'];
+ var modes=['monitor','control','stopped'];
+ for(var i=0;i<ids.length;i++){
+  var b=el(ids[i]);if(!b)continue;
+  var active=modes[i]===mode;
+  b.className=active?'phone-selected '+modes[i]:'';
+  b.setAttribute('aria-pressed',active?'true':'false');
+ }
+}
 function displayPhoneDetails(raw){
  var status=el('phoneStatus'),addr=el('phoneAddress'),code=el('phoneCode'),cert=el('phoneCertificate');
  try{
   var data=JSON.parse(raw);
-  if(!data.enabled){status.textContent='휴대폰 원격 접속: 꺼짐';addr.textContent='';code.textContent='';cert.textContent='';return;}
+  if(!data.enabled){
+   showPhoneMode('stopped');
+   status.textContent=data.error||'휴대폰 원격 접속: 꺼짐';
+   addr.textContent='';code.textContent='';cert.textContent='';
+   return;
+  }
+  // Button selection is a response from the actual Android HTTPS gateway,
+  // not a mere click on the monitor/control button.
+  showPhoneMode(data.allowControl?'control':'monitor');
   status.textContent='휴대폰 접속 ON · '+(data.allowControl?'감시 + 원격제어 허용':'감시 전용');
   var ip=window.NativeDiagnostics&&window.NativeDiagnostics.getIp?window.NativeDiagnostics.getIp():'HMI IP 확인 필요';
   addr.textContent='휴대폰 주소: https://'+ip+':'+data.port+' (동일 LAN / VPN)';
   code.textContent='일회용 연결코드: '+data.pairCode+' · 5분 유효';
   cert.textContent='HTTPS 인증서 SHA-256: '+data.certificateSha256;
- }catch(e){status.textContent=raw;}
+ }catch(e){
+  showPhoneMode('stopped');
+  status.textContent='HTTPS 시작 상태 확인 실패: '+raw;
+  addr.textContent='';code.textContent='';cert.textContent='';
+ }
 }
 function startPhone(control){
- if(!window.NativeDiagnostics||!window.NativeDiagnostics.startPhoneGateway){el('phoneStatus').textContent='휴대폰 연동 미지원 APK입니다.';return;}
- syncPhoneNames();el('phoneStatus').textContent='HTTPS 서버 시작 중';
- displayPhoneDetails(window.NativeDiagnostics.startPhoneGateway(!!control));
+ if(!window.NativeDiagnostics||!window.NativeDiagnostics.startPhoneGateway){
+  showPhoneMode('stopped');
+  el('phoneStatus').textContent='휴대폰 연동 미지원 APK입니다.';return;
+ }
+ syncPhoneNames();
+ el('phoneStatus').textContent='HTTPS 서버 시작 중';
+ try{displayPhoneDetails(window.NativeDiagnostics.startPhoneGateway(!!control));}
+ catch(e){showPhoneMode('stopped');el('phoneStatus').textContent='HTTPS 서버 시작 호출 오류: '+e.message;}
 }
 function stopPhone(){
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.stopPhoneGateway)return;
- el('phoneStatus').textContent=window.NativeDiagnostics.stopPhoneGateway();
- el('phoneAddress').textContent='';el('phoneCode').textContent='';el('phoneCertificate').textContent='';
+ try{
+  var result=window.NativeDiagnostics.stopPhoneGateway();
+  showPhoneMode('stopped');
+  el('phoneStatus').textContent=result;
+  el('phoneAddress').textContent='';el('phoneCode').textContent='';el('phoneCertificate').textContent='';
+ }catch(e){el('phoneStatus').textContent='휴대폰 접속 종료 오류: '+e.message;}
 }
 function refreshIp(){el('ip').textContent=window.NativeDiagnostics?window.NativeDiagnostics.getIp():'미확인'}
 function openCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.openCom5(el('com5Path').value,parseInt(el('com5Baud').value,10)):'Android HMI 앱 전용'}
