@@ -112,11 +112,17 @@ public final class ReleaseUpdater {
   main.post(()->{
    if(closed)return;
    try{
-    if(android.os.Build.VERSION.SDK_INT>=26&&!activity.getPackageManager().canRequestPackageInstalls()){
-     send("update","Android에서 이 앱의 '알 수 없는 앱 설치' 권한을 승인한 뒤 설치 버튼을 다시 눌러 주세요. Play Protect는 우회하지 않습니다.");
-     Intent permission=new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-       Uri.parse("package:"+activity.getPackageName()));
-     activity.startActivity(permission);
+    // Industrial IXP101H1 Android 7.1.x uses the system package installer
+    // without REQUEST_INSTALL_PACKAGES (absent from working v4.90).
+    // Android 8+ needs a different install entitlement; export verified APK
+    // instead of requesting a permission that this HMI build does not declare.
+    if(android.os.Build.VERSION.SDK_INT>=26){
+     Intent export=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+     export.addCategory(Intent.CATEGORY_OPENABLE);
+     export.setType("application/vnd.android.package-archive");
+     export.putExtra(Intent.EXTRA_TITLE,expectedName==null?"ENERGYBLUE_HMI_update.apk":expectedName);
+     activity.startActivityForResult(export,REQUEST_EXPORT_APK);
+     send("update","Android 8 이상 기기: 검증된 APK를 파일로 저장한 뒤 파일 관리자에서 설치를 승인해 주세요.");
      return;
     }
     Uri uri=androidx.core.content.FileProvider.getUriForFile(
@@ -130,6 +136,31 @@ public final class ReleaseUpdater {
     send("update","설치 화면 실행 실패: "+ex.getClass().getSimpleName()+" / "+ex.getMessage());
    }
   });
+ }
+ private static final int REQUEST_EXPORT_APK=49193;
+ boolean onExportResult(int requestCode,int resultCode,Intent data){
+  if(requestCode!=REQUEST_EXPORT_APK)return false;
+  if(resultCode!=Activity.RESULT_OK||data==null||data.getData()==null){
+   send("update","APK 파일 저장을 취소했습니다.");return true;
+  }
+  final Uri destination=data.getData();
+  final File source=verifiedApk;
+  if(source==null||!source.isFile()){send("update","검증된 APK가 없어 저장할 수 없습니다.");return true;}
+  executor.execute(()->{
+   try(InputStream in=new FileInputStream(source);
+       OutputStream out=activity.getContentResolver().openOutputStream(destination,"w")){
+    if(out==null)throw new IOException("출력 파일을 열 수 없습니다");
+    byte[] buf=new byte[32768];int n;long total=0;
+    while((n=in.read(buf))>=0){
+     if(Thread.currentThread().isInterrupted())throw new IOException("저장 취소");
+     total+=n;if(total>150000000)throw new IOException("파일 크기 초과");
+     out.write(buf,0,n);
+    }
+    out.flush();
+    send("update","APK 저장 완료: Android 파일 관리자에서 설치를 승인하세요. Play Protect 경고가 나타나면 취소해 주세요.");
+   }catch(Exception e){send("update","APK 저장 실패: "+e.getMessage());}
+  });
+  return true;
  }
  private static boolean trusted(String url){
   try{URL u=new URL(url);return "https".equalsIgnoreCase(u.getProtocol())&&
