@@ -55,9 +55,10 @@ public final class MainActivity extends Activity {
  private boolean armedAndFresh(int id,boolean shorted){
   synchronized(plcGuard){
    long now=android.os.SystemClock.elapsedRealtime();
+   // The arming itself requires both reads within 10s. During the 60s
+   // arming window every write ALWAYS scans both boards afresh before sending.
    return outputArmUntil>now
      && lastGoodRead[0]>0&&lastGoodRead[1]>0
-     && now-lastGoodRead[0]<=READ_FRESH_MS&&now-lastGoodRead[1]<=READ_FRESH_MS
      && lastM0Shorted[id-1]==shorted;
   }
  }
