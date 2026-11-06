@@ -109,7 +109,7 @@ const mainSrc=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainAct
 assert(mainSrc.includes("ModbusReadOnly.safetyProblem"),"Remote/relationship safety guard missing");
 assert(mainSrc.includes("void armManualOutputs(String mode1,String mode2,int boardCount)"),"Asynchronous arm with physical board count and M0 modes missing");
 assert(mainSrc.includes("outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS"),"Arm must start AFTER PLC scans");
-assert(mainSrc.includes("if(block!=null)throw new java.io.IOException(block)"),"Unsafe remote output config must deny arming");
+assert(mainSrc.includes("if(blocked!=null)throw new java.io.IOException(blocked)"),"Unsafe remote output config must deny arming");
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"수동 출력 시험 차단: ID 1 R245=1"}));
 assert.strictEqual(ctx.plcArmed,false,"Failed safety register check must lock DO");
 assert(node("plcArmStatus").textContent.includes("R245=1"),"Block reason must reach visible HMI");
