@@ -200,6 +200,8 @@ ctx.selected=1;
 ctx.renderMappedHouse();
 assert(node("manualControls").innerHTML.includes("ID 1 / DO09"),"Mapped HMI device card missing exact PLC address");
 assert(node("manualControls").innerHTML.includes("manualMappedOutput(1,8,true)"),"Mapped device ON button is not wired");
+assert(html.includes("if(el('plcTestMode').value!=='bench'&&on&&slot>=4&&slot<20)"),"Normal motor reverse interlock must remain while no-load bench permits mapped channels");
+assert(!html.includes("하우스별 모터 제어는 무부하 다채널 시험에서는 차단합니다"),"Mapped greenhouse DO buttons must work in bench mode");
 assert(node("manualControls").innerHTML.includes("manualMappedOutput(1,8,false)"),"Mapped device OFF button is not wired");
 assert(node("manualControls").innerHTML.includes("disabled"),"Unknown board connection must not enable physical outputs");
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:true,detail:"CRC OK"})}));
