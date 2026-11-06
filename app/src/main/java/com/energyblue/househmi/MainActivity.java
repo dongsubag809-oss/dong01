@@ -23,10 +23,13 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
  private WebView browser;
  private LanDiscovery discovery;
+ private final ExecutorService plcWorker=Executors.newSingleThreadExecutor();
  private ReleaseUpdater updater;
  private final Handler ui = new Handler(Looper.getMainLooper());
  private volatile boolean destroyed = false;
@@ -74,7 +77,12 @@ public final class MainActivity extends Activity {
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){SerialPort.close();destroyed=true;if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ private static String bits(boolean[] values){
+  StringBuilder out=new StringBuilder(64);
+  for(boolean v:values)out.append(v?'1':'0');
+  return out.toString();
+ }
  public final class NativeDiagnostics {
   @JavascriptInterface public String probe(String path){
    try {JSONObject obj=new JSONObject();
@@ -85,6 +93,33 @@ public final class MainActivity extends Activity {
   }
   @JavascriptInterface public String openCom5(String path,int baud){return SerialPort.open(path,baud)+" | PLC ID 1,2 유지 | 제어 명령 미전송";}
   @JavascriptInterface public String closeCom5(){SerialPort.close();return "COM5 닫힘";}
+  /** Reads two N4D4F64 boards using the same FC03 addresses as legacy n4d4f64.py. No output writes. */
+  @JavascriptInterface public void readPlc(String mode1,String mode2){
+   if(!"default".equals(mode1)&&!"m0_short".equals(mode1)){emit("plc","{\"id\":1,\"status\":\"ERROR\",\"message\":\"ID1 M0 모드 선택 오류\"}");return;}
+   if(!"default".equals(mode2)&&!"m0_short".equals(mode2)){emit("plc","{\"id\":2,\"status\":\"ERROR\",\"message\":\"ID2 M0 모드 선택 오류\"}");return;}
+   final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
+   plcWorker.execute(()->{
+    for(int slave=1;slave<=2;slave++){
+     if(destroyed||Thread.currentThread().isInterrupted())return;
+     try{
+      int[] addrs=ModbusReadOnly.addresses(modes[slave-1]);
+      boolean[] doState=ModbusReadOnly.read64(slave,addrs[0]);
+      boolean[] diState=ModbusReadOnly.read64(slave,addrs[1]);
+      JSONObject message=new JSONObject();
+      message.put("id",slave);message.put("status","OK");
+      message.put("di",bits(diState));message.put("do",bits(doState));
+      message.put("diSummary",ModbusReadOnly.summarize(diState));
+      message.put("doSummary",ModbusReadOnly.summarize(doState));
+      message.put("mode",modes[slave-1]?"M0 점퍼 연결":"기본 모드");
+      emit("plc",message.toString());
+     }catch(Exception ex){
+      JSONObject fail=new JSONObject();
+      try{fail.put("id",slave);fail.put("status","ERROR");fail.put("message",ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());}catch(Exception ignored){}
+      emit("plc",fail.toString());
+     }
+    }
+   });
+  }
   @JavascriptInterface public String getIp(){return localIp();}
   @JavascriptInterface public String getAppVersion(){return BuildConfig.VERSION_NAME;}
   @JavascriptInterface public void checkUpdate(){updater.check();}
