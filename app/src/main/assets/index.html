@@ -16,6 +16,10 @@ p{margin:5px 0 12px}.muted{color:var(--muted);font-size:13px}.warn{color:var(--g
 .tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:14px}
 .house,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;min-width:0}
 .house{cursor:pointer}.house.active{border:2px solid var(--cyan);padding:12px}.house-title{font-size:19px;font-weight:800}.house svg{width:100%;height:72px;display:block;margin:6px auto}
+.house-comm{display:inline-block;padding:4px 8px;font-size:12px;font-weight:800;border-radius:7px;white-space:nowrap;border:1px solid #607c8b;background:#2e4555;color:#e4eff5}
+.house-comm.good{background:#14532d;border-color:#4ade80;color:#d6ffe4}
+.house-comm.lost{background:#734522;border-color:#efb66d;color:#fff2d8}
+.house-comm.checking{background:#34495a;color:#e2edf5}
 .metric{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:8px 0}.metric div{background:#0e2232;border-radius:7px;padding:7px 6px;text-align:center}
 .metric span{display:block;font-size:11px;color:var(--muted)}.metric strong{display:block;font-size:18px;color:var(--white);padding-top:3px}
 .state{font-size:12px;color:#efcf8d;margin-top:8px}
@@ -347,7 +351,8 @@ if(!el("nameFields").children.length)nameFields();
 if(!el("doRegistry").children.length)renderDoRegistry();
 var editing=el("editHouse");var oldEdit=editing.value;editing.innerHTML=[1,2,3,4,5].map(function(n){return '<option value="'+n+'">'+hn(n)+'</option>'}).join('');editing.value=oldEdit||"1";
 if(!el("contactFields").children.length)renderContactFields();
-el('houses').innerHTML=[1,2,3,4,5].map(function(n){return '<article class="house '+(selected===n?'active':'')+'" onclick="selected='+n+';render();show(\'manual\')"><div class="house-title">🏡 '+hn(n)+' <span class="badge">통신 대기</span></div>'+houseSvg()+'<div class="metric"><div><span>온도</span><strong>— °C</strong></div><div><span>습도</span><strong>— %</strong></div></div><div class="state">자동운전 상태 미확인</div></article>'}).join('');
+el('houses').innerHTML=[1,2,3,4,5].map(function(n){return '<article class="house '+(selected===n?'active':'')+'" onclick="selected='+n+';render();show(\'manual\')"><div class="house-title">🏡 '+hn(n)+' <span class="house-comm checking" id="houseComm'+n+'">통신 확인 중</span></div>'+houseSvg()+'<div class="metric"><div><span>온도</span><strong>— °C</strong></div><div><span>습도</span><strong>— %</strong></div></div><div class="state">자동운전 상태 미확인</div></article>'}).join('');
+refreshDashboardComms();
 el('houseChoice').innerHTML=[1,2,3,4,5].map(function(n){return '<option value="'+n+'">'+hn(n)+'</option>'}).join('');el('houseChoice').value=String(selected);
 renderMappedHouse();
 el('sensors').innerHTML=[1,2,3,4,5].map(function(n){return '<div class="house"><div class="house-title">'+hn(n)+'</div><p>온도: 미수신</p><p>습도: 미수신</p><p>토양: 미수신</p></div>'}).join('');
@@ -362,6 +367,31 @@ function closeCom5(){el('out').textContent=window.NativeDiagnostics?window.Nativ
 var plcDoStates={1:null,2:null};
 var plcDiStates={1:null,2:null};
 var plcLinks={1:false,2:false};
+var plcLinkChecked={1:false,2:false};
+// House 1-2: PLC ID1, house 3: ID1+ID2, house 4-5: ID2.
+// Green means ALL required boards supplied successful actual CRC-checked
+// Modbus DI and DO values; opening COM5 alone never signals healthy.
+function houseCommBoards(h){
+ var first=(h-1)*24,last=first+23,ids=[];
+ for(var n=Math.floor(first/64)+1;n<=Math.floor(last/64)+1;n++)ids.push(n);
+ return ids;
+}
+function houseCommState(h){
+ var ids=houseCommBoards(h);
+ for(var i=0;i<ids.length;i++)if(!plcLinkChecked[ids[i]])return {state:'checking',text:'통신 확인 중'};
+ for(var j=0;j<ids.length;j++)if(!plcLinks[ids[j]])return {state:'lost',text:'통신 미연결'};
+ return {state:'good',text:'통신 양호'};
+}
+function refreshDashboardComms(){
+ for(var h=1;h<=5;h++){
+  var badge=el('houseComm'+h);
+  if(!badge)continue;
+  var value=houseCommState(h);
+  badge.textContent=value.text;
+  badge.className='house-comm '+value.state;
+  badge.title=houseCommBoards(h).map(function(id){return 'PLC ID '+id;}).join(' + ');
+ }
+}
 var plcArmed=false,plcArmDeadline=0,plcCommandBusy=false;
 function renderRawManual(){
  var target=el('manualRawChannels'),st=el('manualRawStatus');
@@ -394,6 +424,8 @@ function plcLinkReceived(raw){
   var p=JSON.parse(raw),id=+p.id;
   if(id!==1&&id!==2)return;
   plcLinks[id]=p.connected===true;
+  plcLinkChecked[id]=true;
+  refreshDashboardComms();
   var status='ID '+id+' · '+(plcLinks[id]?'연결':'미연결');
   var target=el('plcLink'+id),badge=el('dashPlc'+id);
   target.textContent=status;
