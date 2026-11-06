@@ -458,6 +458,7 @@ function disarmDoTest(){
  plcArmed=false;plcArmDeadline=0;el('plcSafetyAck').checked=false;
  el('plcArmStatus').textContent=window.NativeDiagnostics&&window.NativeDiagnostics.disarmManualOutputs?
    window.NativeDiagnostics.disarmManualOutputs():'수동 시험 잠금';
+ setManualOutputStatus('출력 잠금 · 시험 종료, ON 출력은 자동으로 OFF하지 않습니다.',false);
 }
 function tapDo(id,ch){
  var state=plcDoStates[id],msg=el('plcReadLog');
@@ -505,6 +506,7 @@ function plcReceived(value){
    if(p.id<=selectedPlcCount()){
     plcArmed=false;plcArmDeadline=0;
     el('plcArmStatus').textContent='PLC 읽기 오류 · 출력 시험 잠금';
+    setManualOutputStatus('PLC ID '+p.id+' 통신 오류 · 시험 잠금',false);
     log.textContent=panel.textContent;
    }
    renderRawManual();renderMappedHouse();
