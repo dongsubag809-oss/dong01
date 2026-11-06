@@ -122,16 +122,17 @@ jobs:
             "4. On app startup COM5 opens automatically (last confirmed path and baud, default /dev/ttyS5 9600). PLC ID1 and ID2 are polled separately; offline stays disconnected." \
             "4d. Both ID1 and ID2 offer DI/DO01-64 received state and per-channel controls on the Manual page. No automatic DO command is sent on app startup or reconnect." \
             "4b. If a second PLC is physically connected later, select 2-board mode and read ID1+ID2. Do not select 2-board mode with only ID1 present." \
-            "4a. Choose Single-channel mode for ordinary testing, or disconnected-load bench mode only when all loads are physically disconnected from ID1 outputs." \
-            "4c. Bench mode is session-only with no 60-second timer and permits independently changing DO01-64. CRC, safety configuration, and actual readback remain active." \
+            "4a. Choose ordinary single-output mode for actual equipment tests, or no-load multi-output mode only when all outputs on the selected PLC boards are physically disconnected from equipment." \
+            "4c. Bench mode for physically disconnected loads can independently control all 64 DO channels per connected PLC ID1/ID2 without per-button popups. Manual arming has no 60-second timer; CRC, remote-link checks and readback remain active." \
             "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
             "5a. Actual address plan is in DO_MAP_128.csv: houses 1-5 use 24 DO each in order, ID2 DO57-64 are spare. This is a logical plan, NOT verified physical wiring." \
             "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
             "5c. No-load bench test can activate individual outputs on both present ID1/ID2 boards without modal popups. Do not connect loads while it is armed." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
-          (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
+          (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
           unzip -t "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip"
+          unzip -Z1 "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" | grep -qx "DO_MAP_128.csv"
       - name: Archive distribution ZIP as Actions artifact
         uses: actions/upload-artifact@v4
         with:
