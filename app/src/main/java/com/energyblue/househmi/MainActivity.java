@@ -209,6 +209,10 @@ public final class MainActivity extends Activity {
   /** Fresh read and safety validation before enabling any output, count 1 or 2.
    * Output arming expires after 60 seconds and resets on failure.
    */
+  /** Compatibility with V4.95 HMI WebView three-argument bridge. */
+  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
+   armManualOutputs(mode1,mode2,boardCount,false);
+  }
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 출력 승인 실패: 보드 수량 또는 M0 모드 오류");return;
