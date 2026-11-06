@@ -143,7 +143,7 @@ assert(source.includes("for(int id=1;id<=boardCount;id++)"),"Arming must not req
 assert(source.includes("scanActiveBoards(modes,boardCount)"),"Output guard must scan only physically connected boards");
 assert(source.includes("id<=count")&&source.includes("otherOutputActive"),"Single-active-channel safety must remain");
 assert(source.includes("slave>activeBoards()"),"Absent ID2 output must not be enabled");
-assert(source.includes("armingTicket!=armSequence"),"Disarmed while PLC scan underway must not be approved");
+assert(source.includes("ticket!=armSequence"),"Disarmed while PLC scan underway must not be approved");
 assert(source.includes("activeBoardCount=1"),"One connected ID1 board must be the native default");
 assert(source.includes("(count==1||lastGoodRead[1]>0)"),"ID2 read required ONLY when two boards connected");
 
