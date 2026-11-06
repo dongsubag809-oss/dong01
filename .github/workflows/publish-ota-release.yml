@@ -92,14 +92,15 @@ jobs:
             "V4.87: legacy WebView navigation attempt; Play Protect warning unresolved" \
             "V4.88: removed automatic update downloads; warning unresolved" \
             "V4.89: Korean keyboard regression tests, WebView repairs, in-app installer removed" \
-            "${RELEASE_TAG}: legacy JS compatibility, visible UI error diagnostics, and APK export without in-app installer" \
+            "V4.90: N4D4F64 Modbus FC03 ID 1/2 read-only PLC state monitor" \
+            "${RELEASE_TAG}: restore in-app OTA Android install approval after SHA-256 validation; retain read-only PLC and Korean UI" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
             "ENERGYBLUE IXP101H1 HMI ${RELEASE_TAG}" \
             "1. Keep existing HMI app installed; do not clear its data." \
-            "2. The app does not install other APKs. User chooses where to export the SHA256-verified APK." \
-            "3. If Google Play Protect says Harmful app blocked, CANCEL installation. Do not disable protection." \
+            "2. Update from the HMI UI: Search update -> Download verified APK -> Approve Android installer." \
+            "3. Android installation approval is required. If Google Play Protect says Harmful app blocked, CANCEL installation; do not disable protection." \
             "4. N4D4F64 ID 1/2 COM5 FC03 read only; actual HMI data reply not yet verified. Output writes are blocked." \
             "5. Check with the equipment administrator before testing with live outputs." \
             "6. An Android HMI installation and Play Protect clearance have not been verified." \
@@ -110,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ENERGYBLUE-HMI-SIGNED-ZIP
-          path: dist/ENERGYBLUE_HMI_v4.90.zip
+          path: dist/ENERGYBLUE_HMI_*.zip
           retention-days: 30
       - name: Publish GitHub Release
         env:
