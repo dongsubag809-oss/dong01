@@ -78,9 +78,11 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 @media(max-width:730px){.plc-ch-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .motor-control{border:1px solid #406b79;background:#112d3a;border-radius:12px;padding:12px;min-width:0}
 .motor-actions{display:flex;flex-direction:column;gap:7px;margin:9px 0}
-.motor-actions button{width:100%;margin:0;min-height:49px;font-size:16px}
-.motor-actions .up{background:#1c6d67}.motor-actions .stop{background:#805522;border-color:#e3b86b}
-.motor-actions .down{background:#345c86}.motor-actions button.active{border:2px solid #b6e9de}
+.motor-actions button{width:100%;margin:0;min-height:49px;font-size:16px;font-weight:800;background:#294254!important;color:#cfdee7!important;border:2px solid #536d7c;border-radius:10px;box-shadow:none!important}
+.motor-actions button.up.motor-selected{background:#14783c!important;color:#ffffff!important;border-color:#82f3ae;box-shadow:inset 0 0 0 1px #b7ffcf!important}
+.motor-actions button.stop.motor-selected{background:#c87919!important;color:#ffffff!important;border-color:#ffda99;box-shadow:inset 0 0 0 1px #ffe8b9!important}
+.motor-actions button.down.motor-selected{background:#325caa!important;color:#ffffff!important;border-color:#9bd2ff;box-shadow:inset 0 0 0 1px #d4ecff!important}
+.motor-actions button:disabled{opacity:.53;box-shadow:none!important}
 .motor-state{font-weight:bold;color:#b5ebd0}
 .onoff-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .onoff-actions button{min-height:48px;margin:0;font-size:15px;background:#294254;color:#d3e2eb;border:2px solid #4b6574;border-radius:10px;font-weight:800}
@@ -283,14 +285,14 @@ function renderMappedHouse(){
   if(i>=4&&i<=19){
    var opposite=assignedOutput(h,i+1),otherBits=plcDoStates[opposite.id];
    var reverse=connected&&otherBits&&otherBits.length===64&&otherBits.charAt(opposite.ch-1)==='1';
-   var state=!connected?'미연결':on&&reverse?'정·역 충돌':on?'열림 동작':reverse?'닫힘 동작':'정지';
+   var motorConflict=!!(connected&&on&&reverse);
    var name=assignedDoName(id,ch).replace(/ (열림|닫힘)$/,'');
    html+='<div class="motor-control" data-output="id'+id+'do'+ch+'"><h3>'+esc(name)+'</h3>'+
     '<p class="muted">'+doAddress(id,ch)+' 열림 · '+doAddress(opposite.id,opposite.ch)+' 닫힘</p>'+
     '<div class="motor-actions">'+
-    '<button type="button" class="up '+(on?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',1)">▲ 열림</button>'+
-    '<button type="button" class="stop '+(connected&&!on&&!reverse?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',0)">■ 정지</button>'+
-    '<button type="button" class="down '+(reverse?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',-1)">▼ 닫힘</button></div>'+
+    '<button type="button" class="up '+(connected&&on&&!motorConflict?'motor-selected':'')+'" '+(enabled?'':'disabled ')+'aria-pressed="'+(connected&&on&&!motorConflict?'true':'false')+'" onclick="motorMove('+h+','+i+',1)">▲ 열림</button>'+
+    '<button type="button" class="stop '+(connected&&!on&&!reverse?'motor-selected':'')+'" '+(enabled?'':'disabled ')+'aria-pressed="'+(connected&&!on&&!reverse?'true':'false')+'" onclick="motorMove('+h+','+i+',0)">■ 정지</button>'+
+    '<button type="button" class="down '+(connected&&reverse&&!motorConflict?'motor-selected':'')+'" '+(enabled?'':'disabled ')+'aria-pressed="'+(connected&&reverse&&!motorConflict?'true':'false')+'" onclick="motorMove('+h+','+i+',-1)">▼ 닫힘</button></div>'+
     '</div>';
   }else{
    var name=assignedDoName(id,ch);
