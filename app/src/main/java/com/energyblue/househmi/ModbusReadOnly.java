@@ -45,6 +45,35 @@ public final class ModbusReadOnly {
   }
   return channels;
  }
+ /** Read-only commissioning safety registers from the verified legacy n4d4f64.py. */
+ public static byte[] readWordsRequest(int slave,int address,int count){
+  if(slave!=1&&slave!=2)throw new IllegalArgumentException("Slave ID");
+  if(!((address==245&&count==4)||(address==250&&count==1)))
+   throw new IllegalArgumentException("안전 레지스터 허용 목록 밖");
+  byte[] frame=new byte[]{(byte)slave,3,(byte)(address>>>8),(byte)address,
+    (byte)(count>>>8),(byte)count,0,0};
+  int crc=crc16(frame,6);frame[6]=(byte)crc;frame[7]=(byte)(crc>>>8);
+  return frame;
+ }
+ public static int[] parseWords(int slave,int count,byte[] response)throws IOException{
+  if(count!=1&&count!=4)throw new IOException("레지스터 개수 제한");
+  if(response==null||response.length<5)throw new IOException("읽기 응답 없음");
+  if((response[0]&255)!=slave)throw new IOException("Slave ID 불일치");
+  int expected=((response[response.length-1]&255)<<8)|(response[response.length-2]&255);
+  if(crc16(response,response.length-2)!=expected)throw new IOException("안전 레지스터 CRC 불일치");
+  if((response[1]&255)==0x83)throw new IOException("Modbus 예외 "+(response[2]&255));
+  if((response[1]&255)!=3||response.length!=count*2+5||(response[2]&255)!=count*2)
+   throw new IOException("안전 레지스터 응답 길이 불일치");
+  int[] result=new int[count];
+  for(int i=0;i<count;i++)result[i]=((response[3+i*2]&255)<<8)|(response[4+i*2]&255);
+  return result;
+ }
+ public static boolean safetyConfigAllowsManual(int slave)throws IOException{
+  int[] remote=parseWords(slave,4,SerialPort.exchangeRead(readWordsRequest(slave,245,4)));
+  int[] relation=parseWords(slave,1,SerialPort.exchangeRead(readWordsRequest(slave,250,1)));
+  // Exactly the existing Windows/Raspberry Pi n4d4f64.py write_allowed gate.
+  return remote[0]==0&&remote[1]==0&&remote[3]==0&&relation[0]==0;
+ }
  public static boolean[] read64(int slave,int address)throws IOException{
   return parse64(slave,SerialPort.exchangeRead(request(slave,address)));
  }
