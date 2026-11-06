@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
  }
  private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
  private boolean noLoadTestAuthorized(){
-  synchronized(plcGuard){return noLoadMultiOutput&&outputArmUntil>android.os.SystemClock.elapsedRealtime();}
+  synchronized(plcGuard){return noLoadMultiOutput&&outputArmUntil==-1;}
  }
  private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
@@ -74,7 +74,7 @@ public final class MainActivity extends Activity {
    // Arming has verified only physically connected boards. Every write
    // rechecks all active outputs and safety registers before transmission.
    int count=activeBoardCount;
-   return id>=1&&id<=count&&outputArmUntil>now
+   return id>=1&&id<=count&&(outputArmUntil>now||(outputArmUntil==-1&&noLoadMultiOutput))
      && lastGoodRead[0]>0&&(count==1||lastGoodRead[1]>0)
      && lastM0Shorted[id-1]==shorted;
   }
@@ -241,12 +241,12 @@ public final class MainActivity extends Activity {
      synchronized(plcGuard){
       if(armingTicket!=armSequence||destroyed)
        throw new java.io.IOException("사용자가 시험 승인을 취소했거나 COM5 상태가 변경되었습니다");
-      outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
+      outputArmUntil=noLoadBench?-1:android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
       noLoadMultiOutput=noLoadBench;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
        (noLoadBench?" · 무부하 다채널 시험(다른 DO ON 허용)":" · 단일 DO 시험(동시 ON 차단)")+
-       " · CRC/연동 확인 · 60초 유효";
+       (noLoadBench?" · 세션 종료/시험 잠금까지 유효":" · 60초 유효");
     }catch(Exception ex){
      synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
      outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
@@ -273,7 +273,7 @@ public final class MainActivity extends Activity {
     boolean commandSent=false;
     try{
      if(destroyed||!armedAndFresh(slave,shorted))
-      throw new java.io.IOException("수동 승인 60초 만료·PLC 읽기 상태 오래됨·모드 불일치");
+      throw new java.io.IOException("출력 시험 미활성·선택 모드 불일치·승인 종료");
      boolean[] modes=modesSnapshot();
      int boardCount=activeBoards();
      if(slave>boardCount)throw new java.io.IOException("연결되지 않은 PLC ID 출력 차단");
