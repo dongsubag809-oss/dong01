@@ -22,6 +22,15 @@ jobs:
           gradle-version: '8.10.2'
       - name: Test HMI menu, WebView JS, and Korean input
         run: node scripts/hmi-smoke-test.js
+      - name: Test N4D4F64 Modbus FC03 CRC and 64-channel parsing
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi" "$RUNNER_TEMP/modbus-test-classes"
+          cp app/src/main/java/com/energyblue/househmi/ModbusReadOnly.java "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"
+          cp scripts/modbus/ModbusReadOnlyTest.java "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"
+          printf 'package com.energyblue.househmi; public final class SerialPort {public static byte[] exchangeRead(byte[] req) throws java.io.IOException {throw new java.io.IOException("test stub");}}\n' > "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/SerialPort.java"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/modbus-test-classes" "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"*.java
+          java -cp "$RUNNER_TEMP/modbus-test-classes" com.energyblue.househmi.ModbusReadOnlyTest
       - name: Validate update signing secrets
         env:
           KEYSTORE_B64: ${{ secrets.HMI_KEYSTORE_BASE64 }}
@@ -82,6 +91,7 @@ jobs:
             "V4.86: Korean keyboard and names; baseline running on HMI" \
             "V4.87: legacy WebView navigation attempt; Play Protect warning unresolved" \
             "V4.88: removed automatic update downloads; warning unresolved" \
+            "V4.89: Korean keyboard regression tests, WebView repairs, in-app installer removed" \
             "${RELEASE_TAG}: legacy JS compatibility, visible UI error diagnostics, and APK export without in-app installer" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
@@ -90,7 +100,7 @@ jobs:
             "1. Keep existing HMI app installed; do not clear its data." \
             "2. The app does not install other APKs. User chooses where to export the SHA256-verified APK." \
             "3. If Google Play Protect says Harmful app blocked, CANCEL installation. Do not disable protection." \
-            "4. The program does not send PLC control commands yet; COM5 port open remains a diagnostic only." \
+            "4. N4D4F64 ID 1/2 COM5 FC03 read only; actual HMI data reply not yet verified. Output writes are blocked." \
             "5. Check with the equipment administrator before testing with live outputs." \
             "6. An Android HMI installation and Play Protect clearance have not been verified." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
@@ -100,7 +110,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ENERGYBLUE-HMI-SIGNED-ZIP
-          path: dist/ENERGYBLUE_HMI_v4.89.zip
+          path: dist/ENERGYBLUE_HMI_v4.90.zip
           retention-days: 30
       - name: Publish GitHub Release
         env:
