@@ -35,6 +35,7 @@ public final class MainActivity extends Activity {
  private final AtomicBoolean plcBusy=new AtomicBoolean(false);
  private final AtomicBoolean outputCommandPending=new AtomicBoolean(false);
  private final AtomicBoolean armRequestPending=new AtomicBoolean(false);
+ private final AtomicBoolean emergencyLatched=new AtomicBoolean(false);
  private final Object plcGuard=new Object();
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
@@ -67,6 +68,7 @@ public final class MainActivity extends Activity {
   emit("plcArm","수동 제어 잠금 · ID "+id+" 통신 오류");
  }
  private boolean armedAndFresh(int id,boolean shorted){
+  if(emergencyLatched.get())return false;
   synchronized(plcGuard){
    // A manually armed commissioning session does not expire after 60 seconds.
    // It is revoked by disarm, communication failure, board selection or app exit.
@@ -139,7 +141,7 @@ public final class MainActivity extends Activity {
   }catch(Exception ignored){}
  }
  private void autoScanOnce(){
-  if(destroyed||plcAutoPaused)return;
+  if(destroyed||plcAutoPaused||emergencyLatched.get())return;
   if(!SerialPort.isOpen()){
    String path=plcPreferences().getString("device","/dev/ttyS5");
    int baud=plcPreferences().getInt("baud",9600);
@@ -181,7 +183,7 @@ public final class MainActivity extends Activity {
  private final Runnable plcAutoPoll=new Runnable(){
   @Override public void run(){
    if(destroyed)return;
-   if(!plcAutoPaused&&!armRequestPending.get()&&!outputCommandPending.get()&&plcBusy.compareAndSet(false,true)){
+   if(!plcAutoPaused&&!emergencyLatched.get()&&!armRequestPending.get()&&!outputCommandPending.get()&&plcBusy.compareAndSet(false,true)){
     plcWorker.execute(()->{
      try{autoScanOnce();}
      finally{plcBusy.set(false);}
@@ -190,6 +192,52 @@ public final class MainActivity extends Activity {
    ui.postDelayed(this,5000);
   }
  };
+ private void runEmergencyStop(){
+  // Never assert success merely because a red UI button was tapped.
+  // This worker uses the existing manufacturer-approved one-channel FC05/FC06
+  // OFF protocol; errors are reported explicitly per physical slave ID.
+  emit("emergency","비상정지 명령 처리 중 · PLC ID 1·2 실제 DO 상태 확인");
+  boolean allVerified=true;
+  StringBuilder report=new StringBuilder();
+  for(int id=1;id<=2;id++){
+   try{
+    if(!SerialPort.isOpen()){
+     String path=plcPreferences().getString("device","/dev/ttyS5");
+     int baud=plcPreferences().getInt("baud",9600);
+     String opened=SerialPort.open(path,baud);
+     if(!"OPEN_OK".equals(opened))throw new java.io.IOException("COM5 "+opened);
+    }
+    boolean m0=autoM0(id);
+    int[] addrs=ModbusReadOnly.addresses(m0);
+    boolean[] current=ModbusReadOnly.read64(id,addrs[0]);
+    int sent=0;
+    for(int ch=1;ch<=64;ch++){
+     if(!current[ch-1])continue;
+     ModbusOutput.writeOnce(id,m0,ch,false);
+     sent++;
+    }
+    boolean[] after=ModbusReadOnly.read64(id,addrs[0]);
+    boolean off=true;
+    for(boolean state:after)if(state){off=false;break;}
+    if(!off)throw new java.io.IOException("DO 잔류 ON 감지 · 정지 확인 불가");
+    boolean[] di=ModbusReadOnly.read64(id,addrs[1]);
+    markRead(id,m0);
+    notifyBoard(id,m0,di,after);
+    sendLink(id,true,"비상정지 DO 64점 OFF 실제 수신");
+    report.append("ID ").append(id).append(": 64DO OFF 확인 (OFF 송신 ")
+      .append(sent).append("채널). ");
+   }catch(Exception ex){
+    allVerified=false;
+    String detail=ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage();
+    sendLink(id,false,"비상정지 확인 실패: "+detail);
+    report.append("ID ").append(id).append(": 정지 미확인 (").append(detail).append("). ");
+   }
+  }
+  synchronized(plcGuard){outputArmUntil=0;armSequence++;lastGoodRead[0]=0;lastGoodRead[1]=0;}
+  outputCommandPending.set(false);
+  emit("emergency",(allVerified?"PLC 양쪽 DO OFF 실수신 확인. ":"비상정지 요청 · 일부 PLC의 실제 DO OFF 미확인. ")+report+
+    "비상정지 잠금 유지 · 외부 하드웨어 정지 상태 확인 필요");
+ }
  private volatile boolean destroyed = false;
  @Override public void onCreate(Bundle b) { super.onCreate(b);
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
@@ -323,9 +371,11 @@ public final class MainActivity extends Activity {
    * rejecting while COM5 is busy. No output is sent during arming.
    */
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
+   if(emergencyLatched.get()){emit("plcArm","비상정지 유지 중 · 수동 운전 금지");return;}
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 시험 차단: 연결 보드 수 또는 M0 모드 오류");return;
    }
+   if(emergencyLatched.get())return;
    if(!armRequestPending.compareAndSet(false,true)){
     emit("plcArm","PLC 출력 시험 승인 요청이 이미 진행 중입니다.");return;
    }
@@ -358,7 +408,7 @@ public final class MainActivity extends Activity {
       notifyBoard(id,modes[id-1],di,dout);
      }
      synchronized(plcGuard){
-      if(ticket!=armSequence||destroyed)throw new java.io.IOException("시험 승인 취소 또는 통신 상태 변경");
+      if(ticket!=armSequence||destroyed||emergencyLatched.get())throw new java.io.IOException("비상정지 또는 수동 운전 승인 취소");
       outputArmUntil=-1;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
@@ -387,6 +437,7 @@ public final class MainActivity extends Activity {
    * Physical limit DI and direction mapping unknown: never assume a safe motor pairing.
    */
   @JavascriptInterface public void setDoOutput(int slave,int channel,boolean on,String mode){
+   if(emergencyLatched.get()){writeStatus(slave,channel,"DENIED","비상정지 유지 중 · 출력 명령 금지");return;}
    if(slave<1||slave>activeBoards()||channel<1||channel>64||!validMode(mode)){
     writeStatus(slave,channel,"DENIED","현재 연결 수량에서 ID "+slave+" 출력은 시험 제외 또는 주소 오류");return;
    }
@@ -427,7 +478,7 @@ public final class MainActivity extends Activity {
       guard=ModbusReadOnly.safetyProblem(slave);
       if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
      }
-     if(Thread.currentThread().isInterrupted()||!armedAndFresh(slave,shorted))
+     if(emergencyLatched.get()||Thread.currentThread().isInterrupted()||!armedAndFresh(slave,shorted))
       throw new java.io.IOException("출력 전 승인 만료/통신 작업 중단");
      commandSent=true;
      ModbusOutput.writeOnce(slave,shorted,channel,on);
@@ -454,6 +505,7 @@ public final class MainActivity extends Activity {
    * Reversing always confirms OFF before waiting >=500ms and switching ON.
    */
   @JavascriptInterface public void motorCommand(int slave,int openCh,int closeCh,int direction,String mode){
+   if(emergencyLatched.get()){writeStatus(slave,openCh,"DENIED","비상정지 유지 중 · 모터 명령 금지");return;}
    if(slave<1||slave>activeBoards()||!validMode(mode)||
       (direction!=-1&&direction!=0&&direction!=1)||
       pairedMotorChannel(slave,openCh)!=closeCh||
@@ -470,7 +522,7 @@ public final class MainActivity extends Activity {
     plcBusy.set(true);
     boolean sent=false;
     try{
-     if(destroyed)throw new java.io.IOException("앱 종료");
+     if(destroyed||emergencyLatched.get())throw new java.io.IOException("앱 종료 또는 비상정지");
      if(direction!=0&&!armedAndFresh(slave,shorted))
       throw new java.io.IOException("수동제어 활성 필요");
      boolean[] modes=modesSnapshot();
@@ -484,13 +536,16 @@ public final class MainActivity extends Activity {
      int selected=direction==1?openCh:closeCh;
      if(direction==0){
       if(state[slave-1][openCh-1]){
+       if(emergencyLatched.get())throw new java.io.IOException("비상정지 선행 · 순차 정지 처리로 전환");
        sent=true;ModbusOutput.writeOnce(slave,shorted,openCh,false);
       }
       if(state[slave-1][closeCh-1]){
+       if(emergencyLatched.get())throw new java.io.IOException("비상정지 선행 · 순차 정지 처리로 전환");
        sent=true;ModbusOutput.writeOnce(slave,shorted,closeCh,false);
       }
      }else{
       if(state[slave-1][opposite-1]){
+       if(emergencyLatched.get())throw new java.io.IOException("비상정지 선행 · 순차 정지 처리로 전환");
        sent=true;ModbusOutput.writeOnce(slave,shorted,opposite,false);
       }
      }
@@ -504,7 +559,7 @@ public final class MainActivity extends Activity {
       // 0.5s break-before-make is required even when the opposite output
       // was already OFF, to prevent accidental direction overlap.
       Thread.sleep(500);
-      if(!armedAndFresh(slave,shorted)||Thread.currentThread().isInterrupted())
+      if(emergencyLatched.get()||!armedAndFresh(slave,shorted)||Thread.currentThread().isInterrupted())
        throw new java.io.IOException("방향 전환 중 수동제어 취소 또는 통신 중단");
       boolean[] rechecked=ModbusReadOnly.read64(slave,addr);
       if(rechecked[opposite-1])
@@ -512,6 +567,7 @@ public final class MainActivity extends Activity {
       blocked=ModbusReadOnly.safetyProblem(slave);
       if(blocked!=null)throw new java.io.IOException(blocked);
       if(!rechecked[selected-1]){
+       if(emergencyLatched.get())throw new java.io.IOException("비상정지 후 새 모터 방향 명령 차단");
        sent=true;ModbusOutput.writeOnce(slave,shorted,selected,true);
       }
      }
@@ -538,6 +594,27 @@ public final class MainActivity extends Activity {
     }finally{plcBusy.set(false);outputCommandPending.set(false);}
    });
   }
+  @JavascriptInterface public void emergencyStop(){
+   if(!emergencyLatched.compareAndSet(false,true)){
+    emit("emergency","비상정지 잠금 유지 중 · 자동 복귀하지 않습니다.");return;
+   }
+   synchronized(plcGuard){outputArmUntil=0;armSequence++;lastGoodRead[0]=0;lastGoodRead[1]=0;}
+   emit("plcArm","비상정지 · 수동 제어 즉시 잠금");
+   emit("emergency","비상정지 접수 · 모든 신규 출력 명령 금지, PLC OFF 및 실수신 확인 진행");
+   plcWorker.execute(()->{
+    plcBusy.set(true);
+    try{runEmergencyStop();}finally{plcBusy.set(false);}
+   });
+  }
+  @JavascriptInterface public String resetEmergencyStop(){
+   if(!emergencyLatched.get())return "비상정지 해제 상태 · 수동 운전은 별도 활성 필요";
+   // Software reset does NOT assert real outputs are OFF or auto re-arm.
+   emergencyLatched.set(false);
+   synchronized(plcGuard){outputArmUntil=0;armSequence++;lastGoodRead[0]=0;lastGoodRead[1]=0;}
+   emit("plcArm","비상정지 잠금 해제 · 수동 운전 별도 활성 필요");
+   return "비상정지 잠금 해제 · 자동 출력 재시작 없음 · 현장 안전 확인 필요";
+  }
+  @JavascriptInterface public boolean isEmergencyLatched(){return emergencyLatched.get();}
   @JavascriptInterface public String getIp(){return localIp();}
   @JavascriptInterface public String getAppVersion(){return BuildConfig.VERSION_NAME;}
   @JavascriptInterface public void checkUpdate(){updater.check();}
