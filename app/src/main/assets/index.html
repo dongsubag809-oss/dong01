@@ -79,7 +79,18 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <section id="dashboard" class="page active"><h2>5동 하우스 운영 현황</h2><p class="muted">각 동을 터치하면 해당 동 수동제어 화면을 열 수 있습니다. 측정값은 PLC와 센서가 연결되기 전까지 표시하지 않습니다.</p><div class="tiles" id="houses"></div>
 <div class="grid2"><div class="panel"><h3>전체 시스템 상태</h3><div class="row"><span class="badge" id="dashPlc1">ID 1 확인 중</span><span class="badge" id="dashPlc2">ID 2 확인 중</span><span class="badge">COM6 센서 미연결</span></div><p class="muted" style="margin-top:12px">PLC ID 1·2의 실제 DI·DO 64점씩 자동 조회 · 설정되지 않은 장비별 DO 매핑은 동작하지 않습니다</p></div><div class="panel"><h3>긴급 안내</h3><p class="warn">PLC 개별 DO 수동제어는 실제 통신을 사용합니다. 창문·펌프 등 장비별 DO와 DI 리미트 결선이 확인될 때까지 장비 자동제어·스케줄 버튼은 비활성입니다.</p><p class="muted">실제 비상정지 회로는 HMI와 독립된 하드웨어로 구성해야 합니다.</p></div></div>
 </section>
-<section id="names" class="page"><h2>환경설정 · 사용자 이름 변경</h2><p class="muted">하우스 5개 이름과 각 하우스의 제어 접점 표시 이름을 자유롭게 변경합니다. 이름만 변경하며 PLC 주소와 출력 동작은 변경되지 않습니다. PLC ID 1과 ID 2의 DO01~DO64 총 128점은 고정 주소이며, 사용자 지정 이름만 변경됩니다. 장비별 실제 결선은 배선표 확인 전까지 임의 배정하지 않습니다.</p><div class="panel"><h3>하우스 이름</h3><div id="nameFields"></div><button class="primary" onclick="saveNames()">하우스 이름 저장</button><p id="nameStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>제어 접점 이름 및 DO 출력 표시</h3><label>설정할 하우스 <select id="editHouse" onchange="renderContactFields()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><div id="contactFields"></div><button class="primary" onclick="saveContactNames()">접점 이름 저장</button> <button onclick="resetContactNames()">이 동의 접점 이름 초기화</button><p id="contactStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>PLC 출력 주소 목록 · 총 128DO</h3><p class="muted">ID 1 / DO01~DO64, ID 2 / DO01~DO64. 주소는 변경 불가, 표시 이름만 편집 가능합니다. 이름을 입력해도 실제 장비 배선은 자동 변경되지 않습니다.</p><div class="row"><label>PLC ID <select id="doPlcId" onchange="renderDoRegistry()"><option value="1">ID 1</option><option value="2">ID 2</option></select></label></div><div id="doRegistry"></div><button class="primary" onclick="saveDoRegistry()">출력 이름 저장</button><p id="doRegistryStatus" class="muted"></p></div></section><section id="manual" class="page"><h2>수동 제어 <span class="badge">출력 잠금</span></h2><div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">기존 24DO/동 배정표 적용 · 모터 정·역·DI 리미트 실제 결선은 현장 확인 필요</span></div><div class="controls" id="manualControls"></div>
+<section id="names" class="page"><h2>환경설정 · 사용자 이름 변경</h2><p class="muted">하우스 5개 이름과 각 하우스의 제어 접점 표시 이름을 자유롭게 변경합니다. 이름만 변경하며 PLC 주소와 출력 동작은 변경되지 않습니다. PLC ID 1과 ID 2의 DO01~DO64 총 128점은 고정 주소이며, 사용자 지정 이름만 변경됩니다. 장비별 실제 결선은 배선표 확인 전까지 임의 배정하지 않습니다.</p><div class="panel"><h3>하우스 이름</h3><div id="nameFields"></div><button class="primary" onclick="saveNames()">하우스 이름 저장</button><p id="nameStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>제어 접점 이름 및 DO 출력 표시</h3><label>설정할 하우스 <select id="editHouse" onchange="renderContactFields()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><div id="contactFields"></div><button class="primary" onclick="saveContactNames()">접점 이름 저장</button> <button onclick="resetContactNames()">이 동의 접점 이름 초기화</button><p id="contactStatus" class="muted"></p></div><div class="panel" style="margin-top:12px"><h3>PLC 출력 주소 목록 · 총 128DO</h3><p class="muted">ID 1 / DO01~DO64, ID 2 / DO01~DO64. 주소는 변경 불가, 표시 이름만 편집 가능합니다. 이름을 입력해도 실제 장비 배선은 자동 변경되지 않습니다.</p><div class="row"><label>PLC ID <select id="doPlcId" onchange="renderDoRegistry()"><option value="1">ID 1</option><option value="2">ID 2</option></select></label></div><div id="doRegistry"></div><button class="primary" onclick="saveDoRegistry()">출력 이름 저장</button><p id="doRegistryStatus" class="muted"></p></div></section><section id="manual" class="page"><h2>수동 제어 <span class="badge" id="manualOutputBadge">출력 잠금</span></h2>
+<div class="plc-safety" style="margin:12px 0">
+<strong>수동 출력 활성화 · PLC 실제 응답 기준</strong>
+<p class="warn">부하 미연결 시험만 허용: 모터·펌프·릴레이 등 외부 장비가 실제 DO 단자에 연결되어 있지 않은 경우에 사용하세요. 연결 시 일반 운전 안전 모드로 전환해야 합니다.</p>
+<label><input type="checkbox" id="manualNoLoadAck" onchange="if(!this.checked)stopManualBench()"> 현재 PLC 출력 단자에 외부 부하가 연결되지 않았음을 확인합니다.</label>
+<div class="row">
+<button type="button" class="primary" onclick="startManualBench()">무부하 출력시험 시작</button>
+<button type="button" onclick="stopManualBench()">출력 시험 잠금</button>
+</div>
+<p class="muted" id="manualOutputStatus">PLC ID 1·2 자동 연결 대기 · 출력 잠금</p>
+<p class="muted">시험을 시작하면 연결된 보드만 확인한 후 ARM_OK를 표시합니다. 60초 제한이나 채널별 확인창은 없습니다. 연결 오류·시험 잠금·앱 종료 시 종료됩니다.</p>
+</div><div class="row"><label>제어 대상 동 <select id="houseChoice" onchange="selected=+this.value;render()"><option value="1">1동</option><option value="2">2동</option><option value="3">3동</option><option value="4">4동</option><option value="5">5동</option></select></label><span class="muted">기존 24DO/동 배정표 적용 · 모터 정·역·DI 리미트 실제 결선은 현장 확인 필요</span></div><div class="controls" id="manualControls"></div>
 <div class="panel" style="margin-top:16px"><h3>하우스 장비별 DO 제어 및 전체 채널 · 실수신 기준</h3>
 <p class="muted">ID 1 DO01~64, ID 2 DO01~64의 고정 주소입니다. 각 채널 이름은 환경설정에서 편집할 수 있으나 장비별 배선은 자동으로 연결되지 않습니다. 현재 연결 상태가 확인된 PLC만 시험할 수 있습니다.</p>
 <div class="row"><label>PLC 보드 <select id="manualRawId" onchange="renderRawManual()"><option value="1">ID 1 · DO01~64</option><option value="2">ID 2 · DO01~64</option></select></label>
@@ -267,8 +278,47 @@ function renderMappedHouse(){
    '<p class="state">PLC 실수신: '+state+'</p></div>';
  }).join('');
 }
+function setManualOutputStatus(message,active){
+ var status=el('manualOutputStatus'),badge=el('manualOutputBadge');
+ if(status)status.textContent=message;
+ if(badge)badge.textContent=active?'무부하 수동 ON/OFF 활성':'출력 잠금';
+}
+function startManualBench(){
+ var ack=el('manualNoLoadAck'),bridge=window.NativeDiagnostics;
+ if(!ack||!ack.checked){
+  setManualOutputStatus('출력 잠금 · 외부 부하 미연결 확인 체크 필요',false);
+  return;
+ }
+ if(!bridge||!bridge.armManualOutputs){
+  setManualOutputStatus('Android HMI 출력 제어 모듈을 찾지 못했습니다.',false);
+  return;
+ }
+ var count=plcLinks[1]?(plcLinks[2]?2:1):0;
+ if(!count){
+  setManualOutputStatus('PLC ID 1 미연결 · 실제 통신 확인 후 시험 가능',false);
+  return;
+ }
+ // Keep native board selection, M0 mode and WebView control path consistent.
+ el('plcBoardCount').value=String(count);
+ el('plcMode2').disabled=count===1;
+ el('plcTestMode').value='bench';
+ el('plcSafetyAck').checked=true;
+ plcArmed=false;plcArmDeadline=0;
+ setManualOutputStatus('PLC ID 1'+(count===2?'·2':'')+' 출력 안전조건과 실수신 확인 중 · 출력 잠금',false);
+ try{
+  bridge.armManualOutputs(el('plcMode1').value,el('plcMode2').value,count,true);
+ }catch(e){
+  setManualOutputStatus('출력 활성화 요청 오류: '+e.message,false);
+ }
+}
+function stopManualBench(){
+ var acknowledgement=el('manualNoLoadAck');
+ if(acknowledgement)acknowledgement.checked=false;
+ disarmDoTest();
+ setManualOutputStatus('수동 출력 시험 잠금 · 이미 ON인 DO는 자동 OFF되지 않습니다.',false);
+}
 function manualMappedOutput(h,slot,on){
- var a=assignedOutput(h,slot),log=el('plcReadLog');
+ var a=assignedOutput(h,slot),log=el('manualOutputStatus');
  if(!a)return;
  // Isolated/no-load commissioning may test all mapped 120 DO independently.
  // No equipment may be attached when this selector is active.
@@ -354,6 +404,10 @@ function plcLinkReceived(raw){
   if(plcLinks[1]&&plcLinks[2]&&selectedPlcCount()===1&&!plcArmed&&!plcCommandBusy){
    el('plcBoardCount').value='2';
    el('plcMode2').disabled=false;
+  }
+  if(!plcLinks[id]&&plcArmed&&id<=selectedPlcCount()){
+   plcArmed=false;plcArmDeadline=0;
+   setManualOutputStatus('PLC ID '+id+' 통신 끊김 · 출력 시험 잠금',false);
   }
   renderRawManual();renderMappedHouse();
  }catch(e){el('plcPortStatus').textContent='연결 상태 표시 오류: '+e.message}
@@ -471,10 +525,12 @@ function plcWriteReceived(raw){
   var p=JSON.parse(raw),log=el('plcReadLog');
   if(p.status!=='WORKING')plcCommandBusy=false;
   log.textContent=p.message||'PLC 출력 결과';
+  if(el('manualOutputStatus'))el('manualOutputStatus').textContent=log.textContent;
   if(p.status==='UNKNOWN'){
    plcDoStates[p.id]=null;el('plcBoard'+p.id).textContent='ID '+p.id+' · 출력 명령 후 상태 불확실 · 다시 PLC 상태를 읽어 주세요.';
    plcArmed=false;plcArmDeadline=0;
    el('plcArmStatus').textContent='출력 결과 불확실: 시험 자동 잠금 · 실제 현장 상태 확인 필요';
+   setManualOutputStatus('출력 결과 불확실 · 실제 DO 상태 재확인 필요',false);
   }
   if(p.status==='DENIED')log.textContent='출력 차단: '+p.message;
  }catch(e){plcCommandBusy=false;el('plcReadLog').textContent='출력 응답 표시 오류 '+e.message}
@@ -486,6 +542,7 @@ window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='pl
  plcArmed=authorized;
  plcArmDeadline=authorized?-1:0;
  el('plcArmStatus').textContent=armMessage;
+ setManualOutputStatus(armMessage,authorized);
  if(!authorized)el('plcReadLog').textContent=armMessage;
  return;
 }var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
