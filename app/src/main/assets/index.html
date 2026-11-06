@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<style>
+<link rel="stylesheet" href="automation.css"><style>
 :root{--bg:#0a1623;--panel:#162a3b;--panel2:#1d384a;--line:#355264;--cyan:#69d8ef;--white:#f0f8ff;--muted:#a3b8c7;--gold:#f1c978}*{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--white);font-family:"Malgun Gothic",Arial,sans-serif;font-size:15px}
 header{min-height:74px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#122639;padding:8px 14px;border-bottom:2px solid #377083;flex-wrap:wrap}
@@ -141,9 +141,9 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <p class="muted">ID 1/2의 실제 DO 수신 상태를 표시합니다. 출력 이름은 환경설정에서 수정할 수 있습니다. 모터 정·역 접점은 인터록으로 보호됩니다.</p>
 <div class="row"><label>PLC 보드 <select id="manualRawId" onchange="renderRawManual()"><option value="1">ID 1 · DO01~64</option><option value="2">ID 2 · DO01~64</option></select></label><button type="button" onclick="show('io')">PLC 상태/통신</button></div>
 <p id="manualRawStatus" class="muted">PLC 자동 연결 대기</p><div id="manualRawChannels"></div></div></section>
-<section id="auto" class="page"><h2>자동 제어 조건 설정</h2><p class="warn">온습도·창문·환풍기 조건 설정 화면 초안입니다. 제어 로직 연결 전까지 저장/출력되지 않습니다.</p><div class="grid2"><div class="panel"><h3>온도 운전</h3><table><tr><td>환기 시작 온도</td><td>설정 전</td></tr><tr><td>환기 정지 온도</td><td>설정 전</td></tr><tr><td>난방 시작 온도</td><td>설정 전</td></tr><tr><td>난방 정지 온도</td><td>설정 전</td></tr></table></div><div class="panel"><h3>제어 보호 조건</h3><table><tr><td>열림/닫힘 상호 인터록</td><td>검증 전</td></tr><tr><td>방향 변경 지연</td><td>0.5초 설계 기준</td></tr><tr><td>센서 통신 상실</td><td>정책 결정 필요</td></tr><tr><td>상한/하한 리미트</td><td>DI 맵 검증 필요</td></tr></table></div></div></section>
-<section id="schedule" class="page"><h2>예약 운전 스케줄</h2><p class="muted">동별 스케줄 등록 및 시간 중복 처리 기능은 PLC 제어 로직 통합 시 연결됩니다.</p><table><thead><tr><th>예약 항목</th><th>적용 대상</th><th>상태</th></tr></thead><tbody id="schedules"></tbody></table></section>
-<section id="env" class="page"><h2>환경 모니터링</h2><div class="tiles" id="sensors"></div><div class="panel" style="margin-top:12px"><h3>센서 통신</h3><p>COM6 · 온습도·토양 센서 RS-485 예정</p><p class="warn">실측 통신 전까지 온도·습도·토양 값은 ‘미수신’으로만 표시합니다.</p></div></section>
+<section id="auto" class="page"><div id="automationRoot"></div></section>
+<section id="schedule" class="page"><h2>동·장비별 예약 시간표</h2><div id="scheduleOverview" class="auto-shell"><p>설정 읽는 중</p></div></section>
+<section id="env" class="page"><h2>온습도 계기판 · 수신 이력</h2><div id="environmentGraph" class="auto-shell"><p>실제 수신값 조회 중</p></div><div id="sensors" class="tiles" style="margin-top:12px"></div><p class="muted">온습도 센서의 제조사 통신맵과 실제 COM6 경로가 확인되기 전까지 측정값을 생성하지 않습니다.</p></section>
 <section id="nutrient" class="page"><h2>양액·관수</h2><div class="grid2"><div class="panel"><h3>공통 양액 혼합 장치</h3><table><tr><td>A 원액</td><td>미연결</td></tr><tr><td>B 원액</td><td>미연결</td></tr><tr><td>C 원액</td><td>미연결</td></tr><tr><td>D 물</td><td>미연결</td></tr></table></div><div class="panel"><h3>5동 관수 밸브 상태</h3><table id="valves"></table><p class="warn">밸브-펌프 연동 및 유량 안전조건 검증 전까지 명령 전송을 차단합니다.</p></div></div></section>
 <section id="io" class="page"><h2>I/O 및 통신 진단</h2><div class="grid2"><div class="panel"><h3>PLC / 센서 연결 정보</h3><p>COM5: Slave ID 1과 ID 2 자동 응답 검사 · 미연결 보드는 미연결로 표시</p><p>COM6: 센서 RS-485 예약</p><p>주소 범위: ID 1 DI/DO 01~64, ID 2 DI/DO 01~64. 각 보드의 실제 응답 여부를 별도로 확인합니다.</p><div class="row"><label>COM5 실제 장치 경로 <input id="com5Path" placeholder="/dev/tty..." value="/dev/ttyS5" style="width:190px" autocomplete="off"></label><label>속도 <select id="com5Baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label></div><div class="row" style="margin:10px 0"><button onclick="openCom5()">COM5 포트 열기</button><button onclick="closeCom5()">포트 닫기</button><button onclick="probe()">장치 경로 확인</button></div><p class="muted">PLC Slave ID 1·2 유지. 실제 포트 경로를 입력해야 하며 주소·명령은 변경하지 않습니다. 8N1 포트 개방 및 Modbus FC03 실수신 상태를 검증합니다.</p><div class="log" id="out">COM5 자동 연결 준비</div>
 <div class="row" style="margin:10px 0"><strong>PLC 상태:</strong><span id="plcLink1">ID 1 · 확인 중</span><span id="plcLink2">ID 2 · 확인 중</span></div>
@@ -173,6 +173,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
  </div>
 </div>
 
+<script src="automation.js"></script>
 <script>
 
 /* Self-contained Korean Dubeolsik touch IME: no system Korean keyboard required. */
@@ -433,7 +434,7 @@ renderMappedHouse();
 syncPhoneNames();
 el('sensors').innerHTML=[1,2,3,4,5].map(function(n){return '<div class="house"><div class="house-title">'+hn(n)+'</div><p>온도: 미수신</p><p>습도: 미수신</p><p>토양: 미수신</p></div>'}).join('');
 el('valves').innerHTML=[1,2,3,4,5].map(function(n){return '<tr><td>'+hn(n)+' 밸브</td><td>미수신</td></tr>'}).join('');
-el('schedules').innerHTML=['환풍기','창문 개폐','그늘막','조명','관수','양액 공급','온습도 연동','난방'].map(function(n){return '<tr><td>'+n+'</td><td>동별 / 공통 설정 예정</td><td class="warn">비활성</td></tr>'}).join('');
+if(window.EBAutomation)window.EBAutomation.namesChanged();
 renderRawManual();
 }
 function call(name){if(window.NativeDiagnostics&&typeof window.NativeDiagnostics[name]==='function'){window.NativeDiagnostics[name]()}else{el('updateStatus').textContent='Android HMI 앱에서만 실행 가능합니다.'}}
@@ -714,7 +715,7 @@ function plcWriteReceived(raw){
  }catch(e){plcCommandBusy=false;el('plcReadLog').textContent='출력 응답 표시 오류 '+e.message}
 }
 function probe(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.probe('/dev/ttyS5'):'Android HMI 앱 전용'}
-window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='phoneGateway'){displayPhoneDetails(p.message);return;}if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcLink'){plcLinkReceived(p.message);return;}if(p.type==='plcPort'){el('plcPortStatus').textContent=p.message;return;}if(p.type==='emergency'){emergencyReceived(p.message);return;}if(p.type==='plcArm'){
+window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='automation'){if(window.EBAutomation)window.EBAutomation.receive(p.message);return;}if(p.type==='autoNotice'){if(window.EBAutomation)window.EBAutomation.notice(p.message);return;}if(p.type==='phoneGateway'){displayPhoneDetails(p.message);return;}if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcLink'){plcLinkReceived(p.message);return;}if(p.type==='plcPort'){el('plcPortStatus').textContent=p.message;return;}if(p.type==='emergency'){emergencyReceived(p.message);return;}if(p.type==='plcArm'){
  var armMessage=p.message||'';
  var authorized=armMessage.indexOf('ARM_OK')===0;
  plcArmed=authorized;
@@ -725,5 +726,5 @@ window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='ph
  return;
 }var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
-render();loadAutoPlcConfig();refreshIp();refreshPhoneDetails();setInterval(refreshPhoneDetails,3000);if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
+render();loadAutoPlcConfig();refreshIp();refreshPhoneDetails();setInterval(refreshPhoneDetails,3000);if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);if(window.EBAutomation)window.EBAutomation.init();
 </script></body></html>

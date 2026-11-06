@@ -31,6 +31,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
  private WebView browser;
+ private AutomationController automation;
+ private volatile boolean automationArmRequested=false;
+ private final ThreadLocal<Boolean> automaticDispatch=new ThreadLocal<>();
+ private boolean automaticCall(){return Boolean.TRUE.equals(automaticDispatch.get());}
+ private void pauseAutomation(String reason){
+  automationArmRequested=false;
+  if(automation!=null&&automation.isActive())automation.stop(reason);
+ }
+ private void manualOverride(int id,int channel){if(automation!=null&&!automaticCall())automation.override(id,channel);}
+
  private LanDiscovery discovery;
  private volatile RemoteGateway remoteGateway;
  private final Object phoneGuard=new Object();
@@ -63,10 +73,12 @@ public final class MainActivity extends Activity {
   }
  }
  private void invalidateReads(){
+  pauseAutomation("PLC 포트/운전 상태 변경");
   synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;}
   emit("plcArm","수동 제어 잠금 · 통신 재확인 필요");
  }
  private void setActiveBoardCount(int count){
+  pauseAutomation("PLC 보드 설정 변경");
   if(count!=1&&count!=2)throw new IllegalArgumentException("보드 수량은 1장 또는 2장");
   synchronized(plcGuard){
    activeBoardCount=count;
@@ -76,6 +88,7 @@ public final class MainActivity extends Activity {
  private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
  private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
+  pauseAutomation("PLC 통신 오류");
   synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;armSequence++;}
   emit("plcArm","수동 제어 잠금 · ID "+id+" 통신 오류");
  }
@@ -94,6 +107,7 @@ public final class MainActivity extends Activity {
   synchronized(plcGuard){return new boolean[]{lastM0Shorted[0],lastM0Shorted[1]};}
  }
  private void notifyBoard(int id,boolean shorted,boolean[] di,boolean[] dout)throws Exception{
+  if(automation!=null)automation.board(id,bits(dout),System.currentTimeMillis());
   synchronized(plcGuard){
    remoteDoReadback[id-1]=bits(dout);
    remoteDiReadback[id-1]=bits(di);
@@ -108,6 +122,7 @@ public final class MainActivity extends Activity {
   emit("plc",obj.toString());
  }
  private void writeStatus(int id,int ch,String status,String message){
+  if(automation!=null)automation.outputResult(id,ch,status);
   try{
    JSONObject obj=new JSONObject().put("id",id).put("ch",ch).put("status",status).put("message",message);
    emit("plcWrite",obj.toString());
@@ -151,6 +166,7 @@ public final class MainActivity extends Activity {
  }
  private boolean autoM0(int id){return plcPreferences().getBoolean("m0_id"+id,false);}
  private void sendLink(int id,boolean online,String reason){
+  if(!online&&automation!=null)automation.disconnected(id);
   synchronized(plcGuard){
    remoteLink[id-1]=online;
    if(!online){remoteDoReadback[id-1]=null;remoteDiReadback[id-1]=null;}
@@ -351,6 +367,32 @@ public final class MainActivity extends Activity {
   updater = new ReleaseUpdater(this, this::emit);
   // Updates must be requested from the HMI UI. Never download APKs automatically on startup.
   discovery = new LanDiscovery(); discovery.start();
+  automation=new AutomationController(this,new AutomationController.Host(){
+   @Override public boolean mayOperate(){return remoteMayWrite();}
+   @Override public boolean commandBusy(){return outputCommandPending.get()||armRequestPending.get();}
+   @Override public Boolean output(int house,int slot){
+    int n=(house-1)*24+slot,id=n/64;
+    synchronized(plcGuard){
+     if(!remoteLink[id]||remoteDoReadback[id]==null||System.currentTimeMillis()-remoteLastSeen[id]>20000L)return null;
+     return remoteDoReadback[id].charAt(n%64)=='1';
+    }
+   }
+   @Override public int houseOnCount(int house){int count=0;for(int i=0;i<24;i++){Boolean bit=output(house,i);if(bit==null)return -1;if(bit)count++;}return count;}
+   @Override public long receivedAt(int house){
+    int first=((house-1)*24)/64,last=((house-1)*24+23)/64;
+    synchronized(plcGuard){return houseOnCount(house)<0?0:Math.min(remoteLastSeen[first],remoteLastSeen[last]);}
+   }
+   @Override public String blockReason(int house,int slot){return ((house-1)*24+slot)/64+1>activeBoards()?"해당 PLC 보드 운전 미활성 · I/O 설정에서 연결 수량 확인":null;}
+   @Override public boolean dispatch(int house,int slot,boolean on){
+    if(destroyed||outputCommandPending.get()||armRequestPending.get()||!remoteMayWrite()||AutomationLogic.motor(slot))return false;
+    int n=(house-1)*24+slot,id=n/64+1,ch=n%64+1;
+    automaticDispatch.set(true);
+    try{return new NativeDiagnostics().queueDoOutput(id,ch,on,autoM0(id)?"m0_short":"default");}
+    finally{automaticDispatch.remove();}
+   }
+   @Override public void emit(String event,String message){MainActivity.this.emit(event,message);}
+  });
+  getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
   setContentView(browser); browser.loadUrl("file:///android_asset/index.html");
   ui.postDelayed(plcAutoPoll,1500);
  }
@@ -429,7 +471,7 @@ public final class MainActivity extends Activity {
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){synchronized(phoneGuard){destroyed=true;if(remoteGateway!=null)remoteGateway.dispose();}phoneWorker.shutdownNow();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){automationArmRequested=false;if(automation!=null)automation.close();synchronized(phoneGuard){destroyed=true;if(remoteGateway!=null)remoteGateway.dispose();}phoneWorker.shutdownNow();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  private static String bits(boolean[] values){
   StringBuilder out=new StringBuilder(64);
   for(boolean v:values)out.append(v?'1':'0');
@@ -516,6 +558,7 @@ public final class MainActivity extends Activity {
    * rejecting while COM5 is busy. No output is sent during arming.
    */
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
+   if(!automaticCall())pauseAutomation("수동 운전 승인 요청");
    if(emergencyLatched.get()){emit("plcArm","비상정지 유지 중 · 수동 운전 금지");return;}
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 시험 차단: 연결 보드 수 또는 M0 모드 오류");return;
@@ -571,23 +614,28 @@ public final class MainActivity extends Activity {
      plcBusy.set(false);
      armRequestPending.set(false);
     }
+    if(automationArmRequested){automationArmRequested=false;if(outcome.startsWith("ARM_OK")&&automation!=null)automation.start();}
     emit("plcArm",outcome);
    });
   }
   @JavascriptInterface public String disarmManualOutputs(){
+   pauseAutomation("사용자가 운전 잠금");
    synchronized(plcGuard){outputArmUntil=0;armSequence++;}
    return "수동 제어 잠금 · 이미 ON인 DO 출력은 자동으로 OFF되지 않습니다.";
   }
   /** Single-channel commissioning, no silent retries; both board outputs checked for conflicts.
    * Physical limit DI and direction mapping unknown: never assume a safe motor pairing.
    */
-  @JavascriptInterface public void setDoOutput(int slave,int channel,boolean on,String mode){
-   if(emergencyLatched.get()){writeStatus(slave,channel,"DENIED","비상정지 유지 중 · 출력 명령 금지");return;}
+  @JavascriptInterface public void setDoOutput(int slave,int channel,boolean on,String mode){queueDoOutput(slave,channel,on,mode);}
+  private boolean queueDoOutput(int slave,int channel,boolean on,String mode){
+   final boolean automatic=automaticCall();
+   manualOverride(slave,channel);
+   if(emergencyLatched.get()){writeStatus(slave,channel,"DENIED","비상정지 유지 중 · 출력 명령 금지");return false;}
    if(slave<1||slave>activeBoards()||channel<1||channel>64||!validMode(mode)){
-    writeStatus(slave,channel,"DENIED","현재 연결 수량에서 ID "+slave+" 출력은 시험 제외 또는 주소 오류");return;
+    writeStatus(slave,channel,"DENIED","현재 연결 수량에서 ID "+slave+" 출력은 시험 제외 또는 주소 오류");return false;
    }
    if(!outputCommandPending.compareAndSet(false,true)){
-    writeStatus(slave,channel,"DENIED","이전 DO 명령 처리 중");return;
+    writeStatus(slave,channel,"DENIED","이전 DO 명령 처리 중");return false;
    }
    final boolean shorted="m0_short".equals(mode);
    writeStatus(slave,channel,"WORKING","COM5 통신 작업 순서 대기 · 기존 자동 감시 종료 후 전송");
@@ -595,6 +643,7 @@ public final class MainActivity extends Activity {
     plcBusy.set(true);
     boolean commandSent=false;
     try{
+     if(automatic&&on&&(automation==null||!automation.mayStart(slave,channel)))throw new java.io.IOException("자동 운전 취소 또는 수동 우선");
      if(destroyed||!armedAndFresh(slave,shorted))
       throw new java.io.IOException("수동 제어 미활성 · 연결 상태 또는 모드 확인 필요");
      boolean[] modes=modesSnapshot();
@@ -625,6 +674,7 @@ public final class MainActivity extends Activity {
      }
      if(emergencyLatched.get()||Thread.currentThread().isInterrupted()||!armedAndFresh(slave,shorted))
       throw new java.io.IOException("출력 전 승인 만료/통신 작업 중단");
+     if(automatic&&on&&(automation==null||!automation.mayStart(slave,channel)))throw new java.io.IOException("송신 전 자동 운전 취소");
      commandSent=true;
      ModbusOutput.writeOnce(slave,shorted,channel,on);
      int[] addrs=ModbusReadOnly.addresses(shorted);
@@ -643,6 +693,7 @@ public final class MainActivity extends Activity {
       (ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage()));
     }finally{plcBusy.set(false);outputCommandPending.set(false);}
    });
+   return true;
   }
   /** Atomic motor OPEN / STOP / CLOSE with a verified paired DO index.
    * STOP issues OFF to BOTH motor DOs, regardless of manual-arm state. This is
@@ -650,6 +701,7 @@ public final class MainActivity extends Activity {
    * Reversing always confirms OFF before waiting >=500ms and switching ON.
    */
   @JavascriptInterface public void motorCommand(int slave,int openCh,int closeCh,int direction,String mode){
+   manualOverride(slave,openCh);
    if(emergencyLatched.get()){writeStatus(slave,openCh,"DENIED","비상정지 유지 중 · 모터 명령 금지");return;}
    if(slave<1||slave>activeBoards()||!validMode(mode)||
       (direction!=-1&&direction!=0&&direction!=1)||
@@ -740,6 +792,7 @@ public final class MainActivity extends Activity {
    });
   }
   @JavascriptInterface public void emergencyStop(){
+   pauseAutomation("비상정지");
    if(!emergencyLatched.compareAndSet(false,true)){
     emit("emergency","비상정지 잠금 유지 중 · 자동 복귀하지 않습니다.");return;
    }
@@ -762,6 +815,17 @@ public final class MainActivity extends Activity {
    return "비상정지 잠금 해제 · 자동 출력 재시작 없음 · 현장 안전 확인 필요";
   }
   @JavascriptInterface public boolean isEmergencyLatched(){return emergencyLatched.get();}
+  @JavascriptInterface public void automationSnapshot(int house,int slot,String period,String date,int requestId){if(automation!=null)automation.snapshot(house,slot,period,date,requestId);}
+  @JavascriptInterface public void saveAutomationRule(int house,int slot,String raw){if(automation!=null)automation.save(house,slot,raw);}
+  @JavascriptInterface public void copyAutomationHouse(int from,int to){if(automation!=null)automation.copy(from,to);}
+  @JavascriptInterface public void startAutomation(){
+   if(destroyed||automation==null||emergencyLatched.get()){emit("autoNotice","자동 시작 차단 · 비상정지/앱 상태 확인");return;}
+   if(armRequestPending.get()||outputCommandPending.get()){emit("autoNotice","이전 PLC 명령 완료 후 자동 시작을 눌러 주세요.");return;}
+   automationArmRequested=true;automaticDispatch.set(true);
+   try{armManualOutputs(autoM0(1)?"m0_short":"default",autoM0(2)?"m0_short":"default",activeBoards());}
+   finally{automaticDispatch.remove();}
+  }
+  @JavascriptInterface public void stopAutomation(){automationArmRequested=false;if(automation!=null)automation.stop("사용자 자동운전 정지");}
   @JavascriptInterface public String startPhoneGateway(boolean controls){return phoneOperation(false,controls);}
   @JavascriptInterface public String phoneGatewayInfo(){return phoneInformation();}
   @JavascriptInterface public String setPhoneControl(boolean control){

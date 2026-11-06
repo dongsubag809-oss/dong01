@@ -1,0 +1,34 @@
+'use strict';
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync('app/src/main/assets/automation.js','utf8');
+assert(!/\b(?:let|const)\s+[A-Za-z_$]|=>|\.padStart\s*\(|Array\.from\s*\(/.test(source),'Android 7 UI must retain legacy JavaScript syntax');
+const nodes={};function node(id){if(!nodes[id])nodes[id]={id,value:'',textContent:'',innerHTML:'',checked:false,disabled:false,className:'',style:{},parentNode:{parentNode:{style:{}}},setAttribute(){}};return nodes[id];}
+const calls=[];
+const doc={getElementById:node,createElement:()=>node('new-'+Object.keys(nodes).length),body:{appendChild(){}}};
+const context=vm.createContext({window:{NativeDiagnostics:{automationSnapshot:function(){calls.push(['snapshot',Array.from(arguments)]);},saveAutomationRule:function(){calls.push(['save',Array.from(arguments)]);},copyAutomationHouse:function(){calls.push(['copy',Array.from(arguments)]);},startAutomation:()=>calls.push(['start']),stopAutomation:()=>calls.push(['stop'])}},document:doc,localStorage:{getItem:()=>null,setItem:(k,v)=>calls.push(['pref',k,v])},setInterval(){},Date,JSON,console,isFinite,names:['1동','2동','3동','4동','5동']});
+vm.runInContext(source,context);const api=context.window.EBAutomation;api.init();
+assert(calls.some(x=>x[0]==='snapshot'),'Native history must be requested asynchronously');
+assert(node('automationRoot').innerHTML.includes('자동운전 시작')&&node('automationRoot').innerHTML.includes('장비 설정 저장'),'Functional automation controls missing');
+const rule={house:1,slot:0,enabled:false,mode:'time',join:'all',timeGate:false,temperature:{direction:'high',on:null,off:null},humidity:{direction:'high',on:null,off:null},maxOnSec:null,minOffSec:0,schedules:[]};
+const history={from:Date.now()-86400000,to:Date.now(),bucketMs:900000,barBucketMs:3600000,environment:[],segments:[],bars:[],events:[],observedMs:0,onMs:0,retentionDays:366};
+function response(extra={}){api.receive(Object.assign({requestId:api._state.id,house:1,slot:0,rule,active:false,loaded:true,message:'',temperature:null,humidity:null,houseOnCount:-1,output:null,status:'자동 정지',lastPlcAt:0,rules:[],history},extra));}
+response();assert(node('auGauges').innerHTML.includes('미수신'),'Missing sensor must not show a fabricated value');
+assert(node('auCharts').innerHTML.includes('수신 기록 없음'),'Missing history needs an explicit empty state');
+assert(node('auMetrics').innerHTML.includes('—'),'No observations cannot be presented as measured zero runtime');
+node('auTOn').value='29.5';api.dirty();response();assert.strictEqual(node('auTOn').value,'29.5','Live refresh overwrote an unsaved edit');
+api.setDays(2);node('auStartH').value='23';node('auStartM').value='0';node('auEndH').value='1';node('auEndM').value='0';api.addWindow();
+assert.strictEqual(api._state.windows.length,1,'Cross-midnight schedule not added');
+assert.strictEqual(api._pieces(api._state.windows[0]).length,2,'Cross-midnight window must be drawn on both days');
+api.setDays(4);node('auStartH').value='0';node('auStartM').value='30';node('auEndH').value='1';node('auEndM').value='30';api.addWindow();
+assert.strictEqual(api._state.windows.length,1,'Overlapping next-day schedule must be rejected');assert(node('auNotice').textContent.includes('겹칩니다'),'Overlap reason is not visible');
+api.editWindow(0);node('auEndH').value='2';api.addWindow();assert.strictEqual(api._state.windows[0].end,120,'Schedule edit failed');
+node('auMax').value='600';node('auMin').value='5';node('auEnabled').checked=true;api.save();
+let saved=calls.filter(x=>x[0]==='save').pop();assert.strictEqual(saved[1][0],1);assert.strictEqual(saved[1][1],0);assert.strictEqual(JSON.parse(saved[1][2]).schedules.length,1,'Schedule was not sent with device settings');
+api.period('month');assert.strictEqual(calls.filter(x=>x[0]==='snapshot').pop()[1][2],'month','Month selection must query native persistent history');
+api.date('2026-10-31');assert(calls.some(x=>x[0]==='pref'&&x[2].includes('2026-10-31')),'History date selection must persist');
+api.number('auTOn');api.numKey('delete');api.numKey('8');api.numClose(true);assert.strictEqual(node('auTOn').value,'29.8','Touch decimal keyboard failed');
+api.start();api.stop();assert(calls.some(x=>x[0]==='start')&&calls.some(x=>x[0]==='stop'),'Start/stop must reach native session authority');
+const a=history.from;const trend=api._trend(Object.assign({},history,{environment:[{ts:a,temperature:10,tMin:9,tMax:11},{ts:a+900000,temperature:12,tMin:11,tMax:13},{ts:a+4*900000,temperature:15,tMin:14,tMax:16}]}),'temperature',{});
+assert((trend.match(/M[0-9.]+ [0-9.]+/g)||[]).length>=2,'A sensor-data gap must break the trend line');
+assert(!source.includes('Math.random')&&!source.includes('setSensorValue'),'UI must not fabricate or inject measured sensors');
+console.log('PASS: automation UI legacy syntax, native save/query, missing-data handling, unsaved-edit protection, touch keyboard, midnight/overlap/edit scheduling, period/date retention and graph gaps.');
