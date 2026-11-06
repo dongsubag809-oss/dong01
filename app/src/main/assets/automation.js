@@ -34,7 +34,7 @@ window.EBAutomation=(function(){
   var root=e('automationRoot');if(!root)return;root.innerHTML=layout();
   try{var pref=JSON.parse(localStorage.getItem('eb-auto-view-v1')||'{}');if(pref.house>=1&&pref.house<=5)ui.house=+pref.house;if(slots.indexOf(+pref.slot)>=0)ui.slot=+pref.slot;if(periodLabels[pref.period])ui.period=pref.period;if(pref.date)ui.date=pref.date;}catch(ignore){}
   namesChanged();clockOptions();setDays(127);modal();ui.ready=true;tab('history');refresh(true);
-  setInterval(function(){if(!ui.ready)return;var auto=e('auto'),schedule=e('schedule'),env=e('env');if((auto&&auto.className.indexOf('active')>=0)||(schedule&&schedule.className.indexOf('active')>=0)||(env&&env.className.indexOf('active')>=0))refresh(false);},5000);
+  setInterval(function(){if(!ui.ready)return;var auto=e('auto'),schedule=e('schedule'),env=e('env'),dashboard=e('dashboard');if((dashboard&&dashboard.className.indexOf('active')>=0)||(auto&&auto.className.indexOf('active')>=0)||(schedule&&schedule.className.indexOf('active')>=0)||(env&&env.className.indexOf('active')>=0))refresh(false);},5000);
  }
  function remember(){try{localStorage.setItem('eb-auto-view-v1',JSON.stringify({house:ui.house,slot:ui.slot,period:ui.period,date:ui.date}));}catch(ignore){}}
  function namesChanged(){
@@ -42,7 +42,16 @@ window.EBAutomation=(function(){
   for(var h=1;h<=5;h++)options+='<option value="'+h+'">'+esc(houseName(h))+'</option>';
   e('auHouse').innerHTML=options;e('auCopyHouse').innerHTML=options;e('auHouse').value=String(ui.house);e('auCopyHouse').value=String(ui.house===5?1:ui.house+1);
   for(var i=0;i<slots.length;i++)devices+='<option value="'+slots[i]+'">'+esc(deviceName(ui.house,slots[i]))+'</option>';
-  e('auDevice').innerHTML=devices;e('auDevice').value=String(ui.slot);
+  e('auDevice').innerHTML=devices;e('auDevice').value=String(ui.slot);dashboardStatus();
+ }
+ function dashboardStatus(){
+  if(!ui.data)return;
+  var list=ui.data.rules||[];
+  for(var h=1;h<=5;h++){
+   var node=e('houseAuto'+h);if(!node)continue;var configured=0,paused=0;
+   for(var i=0;i<list.length;i++)if(list[i].house===h&&list[i].enabled){configured++;if(list[i].paused)paused++;}
+   node.textContent=!ui.data.loaded?'자동 설정 읽는 중':ui.data.active?(configured?'자동 조건 감시 '+configured+'대 · 일시정지 '+paused+'대':'자동 대상 없음'):'자동 정지 · 사용 설정 '+configured+'대';
+  }
  }
  function selectHouse(h){ui.house=+h;ui.dirty=0;ui.formKey='';namesChanged();remember();refresh(true);}
  function selectDevice(s){ui.slot=+s;ui.dirty=0;ui.formKey='';remember();refresh(true);}
@@ -57,7 +66,7 @@ window.EBAutomation=(function(){
    e('auRunBadge').textContent=data.active?'자동운전 활성':'자동 정지';e('auRunBadge').className='auto-pill'+(data.active?' running':'');
    e('auDeviceStatus').textContent=data.status+' · 실제 출력: '+(data.output===true?'ON':data.output===false?'OFF':'미수신')+' · 최근 PLC 수신: '+(data.lastPlcAt?fullTime(data.lastPlcAt):'없음');
    if(!ui.dirty&&ui.formKey!==ui.house+':'+ui.slot){loadForm(data.rule);ui.formKey=ui.house+':'+ui.slot;}
-   renderGraphs();overview();
+   renderGraphs();overview();dashboardStatus();
    if(e('environmentGraph'))e('environmentGraph').innerHTML='<div class="auto-gauges">'+gauge('현재 온도',data.temperature,'°C','#ffb45e',null,null)+gauge('현재 습도',data.humidity,'%','#64d7ff',0,100)+gauge('PLC DO ON',data.houseOnCount<0?null:data.houseOnCount,'/24','#73e2bc',0,24)+'</div><button onclick="EBAutomation.openHistory()" style="margin-top:12px">24시간·1주일·1개월 이력 보기</button><p class="auto-muted">'+esc(houseName(ui.house))+' · 온습도 통신맵 미등록으로 센서값은 미수신입니다.</p>';
   }catch(error){notice('자동 화면 응답 오류: '+error.message,true);}
  }
@@ -120,7 +129,7 @@ window.EBAutomation=(function(){
   if(valid)s+='<text x="35" y="183" fill="#94b0c3" font-size="11">'+min+'</text><text x="185" y="183" fill="#94b0c3" font-size="11" text-anchor="end">'+max+'</text>';
   return s+'</svg><p>'+(valid?'실제 수신값':'센서 / PLC 실수신 대기')+'</p></div>';
  }
- function axes(hist,label,min,max,empty){var s='<svg viewBox="0 0 740 215" role="img" aria-label="'+esc(label)+'"><rect width="740" height="215" fill="#102433"/>';for(var i=0;i<5;i++){var y=28+i*34;s+='<path d="M48 '+y+'H724" stroke="#2a455a"/><text x="42" y="'+(y+4)+'" text-anchor="end" fill="#9bb5c9" font-size="11">'+(empty?'—':Math.round((max-(max-min)*i/4)*10)/10)+'</text>';var x=48+i*169,ts=hist.from+(hist.to-hist.from)*i/4;s+='<text x="'+x+'" y="199" text-anchor="'+(i===0?'start':i===4?'end':'middle')+'" fill="#9bb5c9" font-size="11">'+kst(ts,hist.to-hist.from>2*86400000)+'</text>';}return s;}
+ function axes(hist,label,min,max,empty,binary){var s='<svg viewBox="0 0 740 215" role="img" aria-label="'+esc(label)+'"><rect width="740" height="215" fill="#102433"/>';for(var i=0;i<5;i++){var y=28+i*34;if(!binary||i===0||i===4)s+='<path d="M48 '+y+'H724" stroke="#2a455a"/><text x="42" y="'+(y+4)+'" text-anchor="end" fill="#9bb5c9" font-size="11">'+(binary?(i===0?'ON':'OFF'):empty?'—':Math.round((max-(max-min)*i/4)*10)/10)+'</text>';var x=48+i*169,ts=hist.from+(hist.to-hist.from)*i/4;s+='<text x="'+x+'" y="199" text-anchor="'+(i===0?'start':i===4?'end':'middle')+'" fill="#9bb5c9" font-size="11">'+kst(ts,hist.to-hist.from>2*86400000)+'</text>';}return s;}
  function sx(hist,ts){return 48+(ts-hist.from)/(hist.to-hist.from)*676;}
  function trend(hist,kind,settings){
   var temp=kind==='temperature',color=temp?'#ffb45e':'#64d7ff',unit=temp?'°C':'%',list=hist.environment||[],valid=[],low=temp?'tMin':'rMin',high=temp?'tMax':'rMax';
@@ -144,7 +153,7 @@ window.EBAutomation=(function(){
   return '<h3 style="margin:12px 0 4px">PLC DO ON 누적 <span class="auto-muted">단위: 시간 · 미수신 구간 제외</span></h3>'+s+'</svg>'+sensorBars(hist,'temperature')+sensorBars(hist,'humidity');
  }
  function sensorBars(hist,kind){var rows=hist.environment||[],temp=kind==='temperature',lo=temp?'tMin':'rMin',hi=temp?'tMax':'rMax',min=temp?Infinity:0,max=temp?-Infinity:100,found=false;for(var i=0;i<rows.length;i++)if(typeof rows[i][kind]==='number'){found=true;min=Math.min(min,rows[i][lo]);max=Math.max(max,rows[i][hi]);}if(!found){min=0;max=1;}else if(temp){min-=2;max+=2;}var color=temp?'#ffb45e':'#64d7ff',s=axes(hist,kind,min,max,!found);for(i=0;i<rows.length;i++){var p=rows[i];if(typeof p[kind]!=='number')continue;var x=sx(hist,p.ts+hist.bucketMs/2),y=164-(p[kind]-min)/(max-min)*136;s+='<rect x="'+(x-4)+'" y="'+y+'" width="8" height="'+(164-y)+'" fill="'+color+'"/><line x1="'+x+'" y1="'+(164-(p[hi]-min)/(max-min)*136)+'" x2="'+x+'" y2="'+(164-(p[lo]-min)/(max-min)*136)+'" stroke="'+color+'" stroke-width="2"/>';}if(!found)s+='<text x="386" y="105" text-anchor="middle" fill="#b5cad7" font-size="15">실제 '+(temp?'온도':'습도')+' 수신 기록 없음</text>';return '<h3 style="margin:12px 0 4px">'+(temp?'온도':'습도')+' 최저·평균·최고 <span class="auto-muted">'+(temp?'°C':'%')+'</span></h3>'+s+'</svg>';}
- function outputGraph(hist){var s=axes(hist,'PLC DO 실제 회신 ON/OFF',0,1,false),segments=hist.segments||[];for(var i=0;i<segments.length;i++){var p=segments[i],a=sx(hist,p.start),b=sx(hist,p.end);s+='<rect x="'+a+'" y="'+(p.on?28:145)+'" width="'+Math.max(1,b-a)+'" height="19" rx="2" fill="'+(p.on?'#6de1af':'#668ca7')+'"/>';}if(!segments.length)s+='<text x="386" y="105" text-anchor="middle" fill="#b5cad7" font-size="15">PLC 실수신 이력 없음 · 기록 없는 시간은 빈 구간</text>';return '<h3 style="margin:12px 0 4px">선택 장비 PLC DO 실제 회신 <span class="auto-muted">1=ON / 0=OFF</span></h3>'+s+'</svg>';}
+ function outputGraph(hist){var s=axes(hist,'PLC DO 실제 회신 ON/OFF',0,1,false,true),segments=hist.segments||[];for(var i=0;i<segments.length;i++){var p=segments[i],a=sx(hist,p.start),b=sx(hist,p.end);s+='<rect x="'+a+'" y="'+(p.on?28:145)+'" width="'+Math.max(1,b-a)+'" height="19" rx="2" fill="'+(p.on?'#6de1af':'#668ca7')+'"/>';}if(!segments.length)s+='<text x="386" y="105" text-anchor="middle" fill="#b5cad7" font-size="15">PLC 실수신 이력 없음 · 기록 없는 시간은 빈 구간</text>';return '<h3 style="margin:12px 0 4px">선택 장비 PLC DO 실제 회신 <span class="auto-muted">1=ON / 0=OFF</span></h3>'+s+'</svg>';}
  function renderGraphs(){
   renderPeriod();var d=ui.data;if(!d)return;var h=d.history;if(!h)return;
   e('auGauges').innerHTML=gauge('현재 온도',d.temperature,'°C','#ffb45e',null,null)+gauge('현재 습도',d.humidity,'%','#64d7ff',0,100)+gauge('PLC DO ON',d.houseOnCount<0?null:d.houseOnCount,'/24','#73e2bc',0,24);

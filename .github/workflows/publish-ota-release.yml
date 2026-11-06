@@ -69,7 +69,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.HMI_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.HMI_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.HMI_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08' || inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08.1' || inputs.tag }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
@@ -99,7 +99,7 @@ jobs:
           rm -f "$RUNNER_TEMP/hmi-sign/signing.jks"
       - name: Create single ZIP distribution with installation guide
         env:
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08' || inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08.1' || inputs.tag }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/hmi-package"
@@ -138,6 +138,7 @@ jobs:
             "V5.08 history: app-private SQLite DB, KST aggregation, 366-day rolling retention, actual CRC-readback intervals, unknown gaps preserved, no fabricated environmental values" \
             "V5.08 limits: COM6 manufacturer sensor map not supplied; environmental acquisition and condition-driven physical outputs remain blocked. Automatic motors remain blocked without verified DI limit/travel map. No new serial command/address/scaling introduced." \
             "V5.08 validation: automation condition/controller/persistent SQL tests, touch UI/graph regressions, existing HMI/Modbus and 41 TLS/HTTP tests, signed release build and lint. Physical load operation remains unverified." \
+            "V5.08.1: replace obsolete dashboard disabled notice with live per-house automatic session status, refresh dashboard status while monitoring, and label actual output-history axis ON/OFF without fractional states" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag targets the audited source commit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -197,7 +198,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08' || inputs.tag }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'v5.08.1' || inputs.tag }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
