@@ -38,6 +38,8 @@ public final class MainActivity extends Activity {
  // Physical boards present on COM5: default single ID1 for isolated commissioning.
  private int activeBoardCount=1;
  private long armSequence=0;
+ // Off by default on every app launch; armed only for explicit no-load bench commissioning.
+ private boolean noLoadMultiOutput=false;
  private long outputArmUntil=0;
  private static final long OUTPUT_ARM_MS=60000L;
  private void markRead(int id,boolean shorted){
@@ -47,20 +49,23 @@ public final class MainActivity extends Activity {
   }
  }
  private void invalidateReads(){
-  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;}
+  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
   emit("plcArm","수동 출력 시험 해제 · 통신 재확인 필요");
  }
  private void setActiveBoardCount(int count){
   if(count!=1&&count!=2)throw new IllegalArgumentException("보드 수량은 1장 또는 2장");
   synchronized(plcGuard){
    activeBoardCount=count;
-   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;
+   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;
   }
  }
  private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
+ private boolean noLoadTestAuthorized(){
+  synchronized(plcGuard){return noLoadMultiOutput&&outputArmUntil>android.os.SystemClock.elapsedRealtime();}
+ }
  private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
-  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;armSequence++;}
+  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
   emit("plcArm","수동 출력 시험 해제 · ID "+id+" 통신 오류");
  }
  private boolean armedAndFresh(int id,boolean shorted){
@@ -204,7 +209,7 @@ public final class MainActivity extends Activity {
   /** Fresh read and safety validation before enabling any output, count 1 or 2.
    * Output arming expires after 60 seconds and resets on failure.
    */
-  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
+  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 출력 승인 실패: 보드 수량 또는 M0 모드 오류");return;
    }
@@ -233,17 +238,20 @@ public final class MainActivity extends Activity {
       if(armingTicket!=armSequence||destroyed)
        throw new java.io.IOException("사용자가 시험 승인을 취소했거나 COM5 상태가 변경되었습니다");
       outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
+      noLoadMultiOutput=noLoadBench;
      }
-     outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+" 실제 응답/연동 확인 · 60초 수동 단일 DO 시험 허용";
+     outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
+       (noLoadBench?" · 무부하 다채널 시험(다른 DO ON 허용)":" · 단일 DO 시험(동시 ON 차단)")+
+       " · CRC/연동 확인 · 60초 유효";
     }catch(Exception ex){
-     synchronized(plcGuard){outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
+     synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
      outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
     }finally{plcBusy.set(false);}
     emit("plcArm",outcome);
    });
   }
   @JavascriptInterface public String disarmManualOutputs(){
-   synchronized(plcGuard){outputArmUntil=0;armSequence++;}
+   synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
    return "수동 DO 시험 잠금. 이미 ON인 출력은 자동으로 OFF하지 않습니다.";
   }
   /** Single-channel commissioning, no silent retries; both board outputs checked for conflicts.
@@ -276,15 +284,17 @@ public final class MainActivity extends Activity {
       return;
      }
      if(on){
-      if(otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("다른 DO가 ON입니다. 결선 미확인 보호: 한 채널만 ON 허용");
-      // Read the entire bus again after 0.5s so no unknown reverse output overlaps.
+      // Commissioning bench mode is explicitly armed only when NO loads are connected.
+      // Preserve the global one-active-channel rule for ordinary/single-output mode.
+      if(!noLoadTestAuthorized()&&otherOutputActive(states,slave,channel,boardCount))
+       throw new java.io.IOException("다른 DO가 ON입니다. 단일 출력 시험 모드에서는 추가 ON 차단. 무부하 시험 모드를 선택하려면 먼저 출력 부하를 모두 분리하세요.");
+      // Keep the existing 0.5s pre-actuation delay and fresh CRC/safety checks.
       Thread.sleep(500);
       if(!armedAndFresh(slave,shorted))
        throw new java.io.IOException("재점검 중 수동 승인/통신 신선도 만료");
       states=scanActiveBoards(modes,boardCount);
-      if(otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("재확인에서 다른 DO ON 감지, ON 명령 취소");
+      if(!noLoadTestAuthorized()&&otherOutputActive(states,slave,channel,boardCount))
+       throw new java.io.IOException("단일 출력 모드: 다른 DO ON 감지, ON 명령 취소");
       guard=ModbusReadOnly.safetyProblem(slave);
       if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
      }
