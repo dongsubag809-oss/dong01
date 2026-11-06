@@ -458,7 +458,7 @@ public final class MainActivity extends Activity {
       (direction!=-1&&direction!=0&&direction!=1)||
       pairedMotorChannel(slave,openCh)!=closeCh||
       openCh<1||closeCh<1||openCh>64||closeCh>64||
-      ((openCh-1)%2!=0&&pairedMotorChannel(slave,openCh)!=closeCh)){
+      (((slave-1)*64+openCh-1)%24)%2!=0){
     writeStatus(slave,openCh,"DENIED","모터 정·역 DO 주소 또는 명령 오류");return;
    }
    if(!outputCommandPending.compareAndSet(false,true)){
