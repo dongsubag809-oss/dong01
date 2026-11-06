@@ -1,7 +1,7 @@
 plugins { id 'com.android.application' }
 
-def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('50300')).toInteger()
-def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('5.03')
+def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('50400')).toInteger()
+def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('5.04')
 
 android {
     namespace 'com.energyblue.househmi'
