@@ -88,6 +88,7 @@ node("plcBoardCount").value="1";
 assert.strictEqual(ctx.plcBoardCount(),1,"Single-board default selector read");
 ctx.readBothPlcs();
 assert.strictEqual(readBoardCount,1,"Read must NOT poll absent ID2");
+node("plcSafetyAck").checked=true;
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
 ctx.armDoTest();
 assert.strictEqual(ctx.plcArmed,false,"Outputs must remain locked during asynchronous fresh scan");
@@ -130,5 +131,8 @@ assert(source.includes("for(int id=1;id<=boardCount;id++)"),"Arming must not req
 assert(source.includes("scanActiveBoards(modes,boardCount)"),"Output guard must scan only physically connected boards");
 assert(source.includes("id<=count")&&source.includes("otherOutputActive"),"Single-active-channel safety must remain");
 assert(source.includes("slave>activeBoards()"),"Absent ID2 output must not be enabled");
+assert(source.includes("armingTicket!=armSequence"),"Disarmed while PLC scan underway must not be approved");
+assert(source.includes("activeBoardCount=1"),"One connected ID1 board must be the native default");
+assert(source.includes("(count==1||lastGoodRead[1]>0)"),"ID2 read required ONLY when two boards connected");
 
 console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded one-board ID1 test plus optional two-board DO taps and real readback.");
