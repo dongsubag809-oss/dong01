@@ -78,7 +78,7 @@ assert(!ctx.plcGrid("0".repeat(64),"DI 01~64",2,false).includes("tapDo("),"DI mu
 let requested=null,armingModes=null,readBoardCount=null;
 ctx.window.confirm=()=>true;
 ctx.window.NativeDiagnostics={
- armManualOutputs:(m1,m2,count)=>{armingModes=[m1,m2,count];},
+ armManualOutputs:(m1,m2,count,bench)=>{armingModes=[m1,m2,count,bench];},
  readPlc:(m1,m2,count)=>{readBoardCount=count;},
  disarmManualOutputs:()=>"잠금",
  setDoOutput:(id,ch,on,mode)=>{requested={id,ch,on,mode};}
