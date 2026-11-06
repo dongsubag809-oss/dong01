@@ -115,6 +115,15 @@ assert(mainSrc.includes("if(blocked!=null)throw new java.io.IOException(blocked)
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"수동 출력 시험 차단: ID 1 R245=1"}));
 assert.strictEqual(ctx.plcArmed,false,"Failed safety register check must lock DO");
 assert(node("plcArmStatus").textContent.includes("R245=1"),"Block reason must reach visible HMI");
+node("plcTestMode").value="bench";
+node("plcSafetyAck").checked=true;
+ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
+ctx.armDoTest();
+assert.strictEqual(armingModes[3],true,"HMI bench selection must reach native bridge");
+ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"ARM_OK · ID1 bench mode"}));
+assert.strictEqual(ctx.plcArmDeadline,-1,"Bench mode uses a session flag, not the 60-second timer");
+ctx.disarmDoTest();
+assert.strictEqual(ctx.plcArmed,false,"Explicit test lock must revoke arming");
 node("plcBoardCount").value="2";
 ctx.plcBoardCountChanged();
 assert.strictEqual(node("plcMode2").disabled,false,"ID2 mode must enable in two-board mode");
