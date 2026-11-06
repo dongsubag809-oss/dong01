@@ -114,7 +114,8 @@ jobs:
             "V4.99: include verified 128-channel CSV and independent no-load greenhouse/manual DO tests" \
             "V5.00: manual output activation indicator and queued COM5 arming" \
             "V5.01: actual-output HMI, three-button motor control and software forward/reverse 0.5s interlock" \
-            "${RELEASE_TAG}: dashboard green actual PLC link + red always-visible latched emergency stop with ID1/ID2 DO OFF attempts/CRC readback, no automatic restart; header developer 박동수" \
+            "V5.02: green CRC-verified PLC dashboard statuses, latched red emergency stop and developer 박동수 in the header" \
+            "${RELEASE_TAG}: greenhouse manual ON/OFF button highlights green ON or blue OFF only after actual PLC DO readback; remove duplicate DO status caption" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -137,6 +138,7 @@ jobs:
             "5f. Emergency stop is a software RS485 sequential command, not a hardware E-stop. Disconnected PLC or interrupted bus can leave motors energized. Use independently wired fail-safe emergency stop and safety relays." \
             "5g. Emergency latch reset is manual, does not auto-restart any DO, and is blocked while OFF requests are running. DI inputs cannot be reset by HMI." \
             "5h. Header developer identification: 박동수. DI limit addresses and physical motor wiring remain unverified." \
+            "5i. V5.03: On the Manual page, green ON and blue OFF button backgrounds follow actual CRC-verified PLC DO readback only. No color change merely on tap; duplicate DO state caption removed." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
