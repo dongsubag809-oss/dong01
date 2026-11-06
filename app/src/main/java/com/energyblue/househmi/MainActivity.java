@@ -103,12 +103,27 @@ public final class MainActivity extends Activity {
   }
   return states;
  }
- private boolean otherOutputActive(boolean[][] states,int slave,int channel,int count){
-  for(int id=0;id<count;id++)
-   for(int c=0;c<64;c++)
-    if(states[id][c]&&(id+1!=slave||c+1!=channel))return true;
-  return false;
+ /** Verified historical logical map: 5 houses x 24 DO, motor pairs at slots 4..19.
+  * Each adjacent even/odd pair is OPEN/CLOSE. 8 spare channels remain unpaired.
+  * A PLC channel never crosses a board boundary within its pair.
+  */
+ static int pairedMotorChannel(int slave,int channel){
+  if((slave!=1&&slave!=2)||channel<1||channel>64)return -1;
+  int absolute=(slave-1)*64+channel-1;
+  if(absolute>=120)return -1;
+  int slot=absolute%24;
+  if(slot<4||slot>19)return -1;
+  int otherAbsolute=absolute+((slot%2==0)?1:-1);
+  if(otherAbsolute/64!=absolute/64)return -1;
+  return otherAbsolute%64+1;
  }
+ private void validateMotorPairOn(boolean[][] states,int slave,int channel)throws java.io.IOException{
+  int reverse=pairedMotorChannel(slave,channel);
+  if(reverse>0&&states[slave-1][reverse-1])
+   throw new java.io.IOException("모터 정·역 인터록: ID "+slave+" DO"+reverse+
+     " 반대 방향이 ON입니다. 정지 후 0.5초 재확인이 필요합니다.");
+ }
+
  private ReleaseUpdater updater;
  private final Handler ui = new Handler(Looper.getMainLooper());
  private volatile boolean plcAutoPaused=false;
@@ -400,16 +415,15 @@ public final class MainActivity extends Activity {
       return;
      }
      if(on){
-      // Preserve global one-active-output rule until motor wiring is verified.
-      if(otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("다른 DO가 ON입니다. 정·역 결선 확인 전 추가 ON 명령을 차단합니다.");
+      // Unrelated lamps, fans and irrigation remain independently switchable.
+      // A motor's reverse direction is NEVER allowed simultaneously.
+      validateMotorPairOn(states,slave,channel);
       // Keep the existing 0.5s pre-actuation delay and fresh CRC/safety checks.
       Thread.sleep(500);
       if(!armedAndFresh(slave,shorted))
        throw new java.io.IOException("재점검 중 수동 승인/통신 신선도 만료");
       states=scanActiveBoards(modes,boardCount);
-      if(otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("다른 DO가 ON 상태입니다. 새 출력 ON 취소");
+      validateMotorPairOn(states,slave,channel);
       guard=ModbusReadOnly.safetyProblem(slave);
       if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
      }
@@ -431,6 +445,96 @@ public final class MainActivity extends Activity {
      writeStatus(slave,channel,commandSent?"UNKNOWN":"DENIED",
       (commandSent?"출력 명령 송신 후 상태 불확실 · 실제 출력 확인 필요: ":"명령 차단: ")+
       (ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage()));
+    }finally{plcBusy.set(false);outputCommandPending.set(false);}
+   });
+  }
+  /** Atomic motor OPEN / STOP / CLOSE with a verified paired DO index.
+   * STOP issues OFF to BOTH motor DOs, regardless of manual-arm state. This is
+   * a software stop, NOT a replacement for a hardwired emergency stop.
+   * Reversing always confirms OFF before waiting >=500ms and switching ON.
+   */
+  @JavascriptInterface public void motorCommand(int slave,int openCh,int closeCh,int direction,String mode){
+   if(slave<1||slave>activeBoards()||!validMode(mode)||
+      (direction!=-1&&direction!=0&&direction!=1)||
+      pairedMotorChannel(slave,openCh)!=closeCh||
+      openCh<1||closeCh<1||openCh>64||closeCh>64||
+      ((openCh-1)%2!=0&&pairedMotorChannel(slave,openCh)!=closeCh)){
+    writeStatus(slave,openCh,"DENIED","모터 정·역 DO 주소 또는 명령 오류");return;
+   }
+   if(!outputCommandPending.compareAndSet(false,true)){
+    writeStatus(slave,openCh,"DENIED","이전 출력 명령 처리 중");return;
+   }
+   final boolean shorted="m0_short".equals(mode);
+   writeStatus(slave,openCh,"WORKING","모터 "+(direction==1?"열림":direction==-1?"닫힘":"정지")+" 명령 대기");
+   plcWorker.execute(()->{
+    plcBusy.set(true);
+    boolean sent=false;
+    try{
+     if(destroyed)throw new java.io.IOException("앱 종료");
+     if(direction!=0&&!armedAndFresh(slave,shorted))
+      throw new java.io.IOException("수동제어 활성 필요");
+     boolean[] modes=modesSnapshot();
+     int count=activeBoards();
+     boolean[][] state=scanActiveBoards(modes,count);
+     String blocked=ModbusReadOnly.safetyProblem(slave);
+     if(blocked!=null&&direction!=0)throw new java.io.IOException(blocked);
+     int addr=ModbusReadOnly.addresses(shorted)[0];
+     // STOP or reverse direction: drop the other direction first.
+     int opposite=direction==1?closeCh:openCh;
+     int selected=direction==1?openCh:closeCh;
+     if(direction==0){
+      if(state[slave-1][openCh-1]){
+       sent=true;ModbusOutput.writeOnce(slave,shorted,openCh,false);
+      }
+      if(state[slave-1][closeCh-1]){
+       sent=true;ModbusOutput.writeOnce(slave,shorted,closeCh,false);
+      }
+     }else{
+      if(state[slave-1][opposite-1]){
+       sent=true;ModbusOutput.writeOnce(slave,shorted,opposite,false);
+      }
+     }
+     boolean[] afterOff=ModbusReadOnly.read64(slave,addr);
+     if(direction==0){
+      if(afterOff[openCh-1]||afterOff[closeCh-1])
+       throw new java.io.IOException("정지 후 DO OFF 재수신 불일치");
+     }else{
+      if(afterOff[opposite-1])
+       throw new java.io.IOException("반대 방향 DO OFF 확인 실패");
+      // 0.5s break-before-make is required even when the opposite output
+      // was already OFF, to prevent accidental direction overlap.
+      Thread.sleep(500);
+      if(!armedAndFresh(slave,shorted)||Thread.currentThread().isInterrupted())
+       throw new java.io.IOException("방향 전환 중 수동제어 취소 또는 통신 중단");
+      boolean[] rechecked=ModbusReadOnly.read64(slave,addr);
+      if(rechecked[opposite-1])
+       throw new java.io.IOException("방향 전환 직전 반대 DO가 ON으로 변경됨");
+      blocked=ModbusReadOnly.safetyProblem(slave);
+      if(blocked!=null)throw new java.io.IOException(blocked);
+      if(!rechecked[selected-1]){
+       sent=true;ModbusOutput.writeOnce(slave,shorted,selected,true);
+      }
+     }
+     boolean[] finalDo=ModbusReadOnly.read64(slave,addr);
+     boolean[] finalDi=ModbusReadOnly.read64(slave,ModbusReadOnly.addresses(shorted)[1]);
+     markRead(slave,shorted);
+     notifyBoard(slave,shorted,finalDi,finalDo);
+     if(finalDo[openCh-1]&&finalDo[closeCh-1])
+      throw new java.io.IOException("정·역 DO 동시 ON 감지");
+     if(direction==0&&(finalDo[openCh-1]||finalDo[closeCh-1]))
+      throw new java.io.IOException("정지 출력 확인 실패");
+     if(direction==1&&!finalDo[openCh-1])
+      throw new java.io.IOException("열림 출력 확인 실패");
+     if(direction==-1&&!finalDo[closeCh-1])
+      throw new java.io.IOException("닫힘 출력 확인 실패");
+     writeStatus(slave,openCh,"CONFIRMED",
+       "ID "+slave+" 모터 "+(direction==0?"정지":direction==1?"열림":"닫힘")+
+       " · 정/역 인터록, 0.5초 전환 및 DO 실수신 확인");
+    }catch(Exception ex){
+     invalidateBoard(slave);
+     writeStatus(slave,openCh,sent?"UNKNOWN":"DENIED",
+       (sent?"모터 명령 후 상태 불확실: ":"모터 명령 차단: ")+
+       (ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage()));
     }finally{plcBusy.set(false);outputCommandPending.set(false);}
    });
   }
