@@ -394,7 +394,7 @@ function plcBoardCountChanged(){
 function armDoTest(){
  var msg=el('plcArmStatus');
  if(!el('plcSafetyAck').checked){msg.textContent='먼저 현장 안전 및 결선을 확인한 뒤 체크하세요.';return;}
- if(el('plcTestMode').value!=='bench'&&!window.confirm('PLC 실제 출력을 시험 모드로 활성화할까요?\\n정·역 모터와 리미트 결선이 미확인된 채널은 절대 ON하지 마세요.'))return;
+ // Explicit local safety checkbox and test mode selection are required; no modal confirmation.
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.armManualOutputs){msg.textContent='지원하지 않는 APK입니다.';return;}
  plcArmed=false;plcArmDeadline=0;
  msg.textContent='PLC ID 1'+(selectedPlcCount()===2?'·2':'')+' 실제 수신/안전 설정 재검사 중 · 아직 승인되지 않음';
@@ -417,7 +417,7 @@ function tapDo(id,ch){
  var label=on?'ON · 실제 출력 구동':'OFF · 출력 정지';
  var notice='PLC ID '+id+' DO'+('0'+ch).slice(-2)+' '+label+
   '\\n이 채널에 연결된 장비가 움직일 수 있습니다. 실제 명령을 송신합니까?';
- if(el('plcTestMode').value!=='bench'&&!window.confirm(notice))return;
+ // All output-test operations report status inline; no blocking confirmation dialog.
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.setDoOutput){msg.textContent='출력 통신 기능이 없는 버전';return;}
  plcCommandBusy=true;
  msg.textContent='ID '+id+' DO'+ch+' '+label+' · PLC 응답 대기, 버튼 연타 금지';
