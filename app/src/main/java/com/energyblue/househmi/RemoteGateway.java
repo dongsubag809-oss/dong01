@@ -179,7 +179,9 @@ public final class RemoteGateway implements AutoCloseable {
     send(out,200,"application/json",state.toString());return;
    }
    if(method.equals("POST")&&path.equals("/api/command")){
-    if(!allowControl||!controller.locallyAllowed()){
+    // Emergency requests remain available to an authenticated control session even
+    // when ordinary manual outputs are locked; this never claims physical stop.
+    if(!allowControl||(!controller.locallyAllowed()&&!"emergency".equals(payload.optString("type","")))){
      send(out,403,"application/json","{\"error\":\"local operation not authorized\"}");return;
     }
     String result=controller.command(payload);
