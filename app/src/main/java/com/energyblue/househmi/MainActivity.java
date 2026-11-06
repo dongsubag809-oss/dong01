@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MainActivity extends Activity {
  private WebView browser;
  private AutomationController automation;
+ private SensorController sensor;
  private volatile boolean automationArmRequested=false;
  private final ThreadLocal<Boolean> automaticDispatch=new ThreadLocal<>();
  private boolean automaticCall(){return Boolean.TRUE.equals(automaticDispatch.get());}
@@ -392,6 +393,17 @@ public final class MainActivity extends Activity {
    }
    @Override public void emit(String event,String message){MainActivity.this.emit(event,message);}
   });
+  sensor=new SensorController(new SensorController.Host(){
+   @Override public String plcPath(){return plcPreferences().getString("device","/dev/ttyS5");}
+   @Override public void persist(String config){getSharedPreferences("sensor_com6_v1",Context.MODE_PRIVATE).edit().putString("config",config).apply();}
+   @Override public void emit(String json){MainActivity.this.emit("sensor",json);}
+   @Override public void reading(double t,double h,long at){if(automation!=null)automation.sensor(1,t,h,at);}
+   @Override public void invalidate(){if(automation!=null)automation.sensorDisconnected(1);}
+  },new SensorController.Port(){
+   @Override public String open(String path,int baud){return SensorSerial.open(path,baud);}
+   @Override public byte[] read(int id,int fc,String map,int timeout)throws java.io.IOException{return SensorSerial.read(id,fc,map,timeout);}
+   @Override public void close(){SensorSerial.close();}
+  },getSharedPreferences("sensor_com6_v1",Context.MODE_PRIVATE).getString("config","{}"));
   getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
   setContentView(browser); browser.loadUrl("file:///android_asset/index.html");
   ui.postDelayed(plcAutoPoll,1500);
@@ -471,7 +483,7 @@ public final class MainActivity extends Activity {
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){automationArmRequested=false;if(automation!=null)automation.close();synchronized(phoneGuard){destroyed=true;if(remoteGateway!=null)remoteGateway.dispose();}phoneWorker.shutdownNow();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){if(sensor!=null)sensor.close();automationArmRequested=false;if(automation!=null)automation.close();synchronized(phoneGuard){destroyed=true;if(remoteGateway!=null)remoteGateway.dispose();}phoneWorker.shutdownNow();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  private static String bits(boolean[] values){
   StringBuilder out=new StringBuilder(64);
   for(boolean v:values)out.append(v?'1':'0');
@@ -485,13 +497,25 @@ public final class MainActivity extends Activity {
     obj.put("result",file.exists()?"장치 파일 확인됨 (RS485 통신 미검증)":"장치 파일 없음");return obj.toString();
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
+  @JavascriptInterface public String sensorInfo(){
+   try{return new JSONObject(sensor==null?"{}":sensor.snapshot()).put("devices",SensorController.devices(plcPreferences().getString("device","/dev/ttyS5"))).toString();}catch(Exception ex){return "{}";}
+  }
+  @JavascriptInterface public void configureSensor(String raw){if(sensor!=null)sensor.configure(raw);}
+  @JavascriptInterface public void searchSensor(){if(sensor!=null)sensor.search();}
+  @JavascriptInterface public void stopSensor(){if(sensor!=null)sensor.stop();}
+  @JavascriptInterface public void cancelSensorSearch(){if(sensor!=null)sensor.cancelSearch();}
+  @JavascriptInterface public void confirmSensorMap(){if(sensor!=null)sensor.confirm();}
   @JavascriptInterface public String openCom5(String path,int baud){
    if(plcBusy.get()||outputCommandPending.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";
    invalidateReads();
-   String result=SerialPort.open(path,baud);
+   String result;
+   synchronized(SensorSerial.class){
+    if(sensor!=null&&sensor.reservesPath(path))return "COM6 센서 경로와 중복 · 센서 경로를 먼저 변경하세요.";
+    result=SerialPort.open(path,baud);
    if("OPEN_OK".equals(result)){
     plcPreferences().edit().putString("device",path).putInt("baud",baud).apply();
     plcAutoPaused=false;
+   }
    }
    emit("plcPort",result);
    return result+" | ID 1·2 자동 실수신 감시 · DO 자동 출력 없음";

@@ -67,7 +67,7 @@ window.EBAutomation=(function(){
    e('auDeviceStatus').textContent=data.status+' · 실제 출력: '+(data.output===true?'ON':data.output===false?'OFF':'미수신')+' · 최근 PLC 수신: '+(data.lastPlcAt?fullTime(data.lastPlcAt):'없음');
    if(!ui.dirty&&ui.formKey!==ui.house+':'+ui.slot){loadForm(data.rule);ui.formKey=ui.house+':'+ui.slot;}
    renderGraphs();overview();dashboardStatus();
-   if(e('environmentGraph'))e('environmentGraph').innerHTML='<div class="auto-gauges">'+gauge('현재 온도',data.temperature,'°C','#ffb45e',null,null)+gauge('현재 습도',data.humidity,'%','#64d7ff',0,100)+gauge('PLC DO ON',data.houseOnCount<0?null:data.houseOnCount,'/24','#73e2bc',0,24)+'</div><button onclick="EBAutomation.openHistory()" style="margin-top:12px">24시간·1주일·1개월 이력 보기</button><p class="auto-muted">'+esc(houseName(ui.house))+' · 온습도 통신맵 미등록으로 센서값은 미수신입니다.</p>';
+   if(e('environmentGraph'))e('environmentGraph').innerHTML='<div class="auto-gauges">'+gauge('현재 온도',data.temperature,'°C','#ffb45e',null,null)+gauge('현재 습도',data.humidity,'%','#64d7ff',0,100)+gauge('PLC DO ON',data.houseOnCount<0?null:data.houseOnCount,'/24','#73e2bc',0,24)+'</div><button onclick="EBAutomation.openHistory()" style="margin-top:12px">24시간·1주일·1개월 이력 보기</button><p class="auto-muted">'+esc(houseName(ui.house))+' · '+esc(data.sensorStatus||'센서 미수신')+'</p>';
   }catch(error){notice('자동 화면 응답 오류: '+error.message,true);}
  }
  function onNotice(text){notice(text,/(실패|오류|차단)/.test(text));if(text.indexOf('저장 완료')>=0){if(ui.dirty===ui.savedVersion){ui.dirty=0;ui.formKey='';e('auDirty').textContent='저장 완료';}refresh(true);}else if(text.indexOf('복사 완료')>=0)refresh(true);}
@@ -82,7 +82,7 @@ window.EBAutomation=(function(){
  }
  function mode(){
   var value=e('auMode').value;var motorMessage=motor(ui.slot)?'창문·그늘막 자동 구동은 실제 리미트 DI와 구동시간 확인 전까지 차단됩니다. 기존 수동 정역 제어는 유지합니다.':'시간 예약은 실제 PLC 명령에 연결됩니다. 새 자동운전은 현장 시작 버튼과 PLC 실수신 확인 후 가능합니다.';
-  e('auCapability').textContent=motorMessage+(value==='time'?'':' 온습도 조건은 센서 미수신 상태에서는 실행하지 않습니다.');
+  e('auCapability').textContent=motorMessage+(value==='time'?'':' 이번 버전은 온습도 수신·이력 확인용이며 온습도 자동 출력은 잠금 상태입니다.');
   e('auTimeGate').disabled=value==='time';e('auJoin').disabled=value!=='combined';
  }
  function form(){return {house:ui.house,slot:ui.slot,enabled:e('auEnabled').checked,mode:e('auMode').value,join:e('auJoin').value,timeGate:e('auTimeGate').checked,temperature:{direction:e('auTDirection').value,on:n('auTOn'),off:n('auTOff')},humidity:{direction:e('auRDirection').value,on:n('auROn'),off:n('auROff')},maxOnSec:n('auMax'),minOffSec:n('auMin'),schedules:ui.windows};}

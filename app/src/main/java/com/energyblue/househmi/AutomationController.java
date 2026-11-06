@@ -28,6 +28,16 @@ public final class AutomationController implements AutoCloseable {
  private volatile boolean active=false,closed=false,loaded=false;
  private volatile String message="설정·기록 읽는 중";
  private long lastWall=0,lastMono=0;
+ private final double[] temperatures=new double[5],humidities=new double[5];
+ private final long[] sensorAt=new long[5],sensorMono=new long[5];
+ /** Only native CRC-validated, locally confirmed sensor mappings enter history. */
+ public void sensor(int house,double temperature,double humidity,long at){
+  if(closed||house!=1||!AutomationLogic.finite(temperature)||!AutomationLogic.finite(humidity)||temperature< -40||temperature>80||humidity<0||humidity>100)return;
+  engine.execute(()->{int i=house-1;temperatures[i]=temperature;humidities[i]=humidity;sensorAt[i]=at;sensorMono[i]=SystemClock.elapsedRealtime();});
+  historyWorker.execute(()->{try{store.sensor(house,temperature,humidity,at);}catch(Exception ex){message="온습도 이력 저장 오류: "+ex.getMessage();}});
+ }
+ public void sensorDisconnected(int house){if(!closed&&house>=1&&house<=5)engine.execute(()->{sensorAt[house-1]=0;sensorMono[house-1]=0;});}
+
  private static final class Run {
   boolean owned=false,pending=false,pendingOn=false,stopping=false;
   long started=0,lastOff=0,pendingAt=0;
@@ -125,7 +135,7 @@ public final class AutomationController implements AutoCloseable {
    String block=host.blockReason(house,slot);if(block!=null){r.status=block;continue;}
    if(actual==null){r.status="PLC 실수신 없음 · 자동 차단";continue;}
    if(!rule.optString("mode").equals("time")){
-    r.status="온습도 센서 미수신 · 제조사 통신맵 필요";
+    r.status="온습도 자동 출력 잠금 · 이번 버전은 센서 수신·이력 확인용";
     if(r.owned){r.stopping=true;request(rule,r,false,mono);}continue;
    }
    boolean demand=AutomationLogic.demand(rule,now,null,null,false,false);
@@ -181,9 +191,11 @@ public final class AutomationController implements AutoCloseable {
   engine.execute(()->{
    try{
     JSONObject rule=rules.get(AutomationLogic.key(house,slot));if(rule==null)rule=AutomationLogic.blank(house,slot);
+    int index=house-1;boolean sensorFresh=sensorAt[index]>0&&SystemClock.elapsedRealtime()-sensorMono[index]<=10000;
     JSONObject response=new JSONObject().put("requestId",requestId).put("house",house).put("slot",slot).put("period",period).put("date",date)
      .put("rule",new JSONObject(rule.toString())).put("active",active).put("loaded",loaded).put("message",message)
-     .put("temperature",JSONObject.NULL).put("humidity",JSONObject.NULL).put("sensorReceivedAt",JSONObject.NULL)
+     .put("temperature",sensorFresh?temperatures[index]:JSONObject.NULL).put("humidity",sensorFresh?humidities[index]:JSONObject.NULL).put("sensorReceivedAt",sensorFresh?sensorAt[index]:JSONObject.NULL)
+     .put("sensorStatus",sensorFresh?"COM6 실제 응답 · OLED 일치 확인됨":"센서 미수신 또는 OLED 일치 확인 전")
      .put("lastPlcAt",host.receivedAt(house)).put("houseOnCount",host.houseOnCount(house)).put("output",host.output(house,slot)==null?JSONObject.NULL:host.output(house,slot));
     JSONArray summary=new JSONArray();
     for(JSONObject r:rules.values()){

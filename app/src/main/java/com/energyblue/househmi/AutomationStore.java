@@ -51,7 +51,7 @@ public final class AutomationStore extends SQLiteOpenHelper {
   lastTime[index]=now;prune(db,now);
  }
  public synchronized void disconnected(int id){if(id>=1&&id<=2){segmentId[id-1]=0;lastTime[id-1]=0;lastBits[id-1]=null;}}
- // Reserved for a future verified COM6 decoder. No JS/phone injection endpoint exists.
+ // Native COM6 decoder with locally confirmed mapping. No JS/phone injection endpoint exists.
  synchronized void sensor(int house,double temperature,double humidity,long receivedAt){
   if(house<1||house>5||!AutomationLogic.finite(temperature)||!AutomationLogic.finite(humidity)||humidity<0||humidity>100)return;
   long minute=receivedAt/60000*60000;SQLiteDatabase db=getWritableDatabase();
