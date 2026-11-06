@@ -110,7 +110,8 @@ jobs:
             "V4.95: single N4D4F64 board ID1 default, ID2 not polled, optional 2-board mode" \
             "V4.96: isolated ID1 bench control with independent DO01-64 and session-only manual arm" \
             "V4.97: automatic COM5 ID1/ID2 link-state monitoring and actual 128-channel raw I/O console" \
-            "${RELEASE_TAG}: historic 24DO per house mapped to ID1/ID2 120 outputs, 8 spare, editable Korean labels, mapped house ON/OFF with commissioning restrictions; bench tests across both IDs" \
+            "V4.98: historical 24DO per house mapping across 120 channels and 8 spare, editable Korean output names" \
+            "${RELEASE_TAG}: include verified 128-channel CSV in the ZIP; allow independent no-load manual test from mapped greenhouse buttons and raw DO screen" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
