@@ -296,6 +296,7 @@ public final class MainActivity extends Activity {
    return "비상정지 수신 · HMI에서 PLC ID1/ID2 실제 OFF 재조회 중 (정지 완료가 아님)";
   }
   if(!remoteMayWrite())return "DENIED · HMI 수동 운전 승인·PLC 연결 확인 필요";
+  if(armRequestPending.get()||outputCommandPending.get())return "DENIED · PLC 이전 명령 처리 중";
   int house=payload.optInt("house",-1),slot=payload.optInt("slot",-1);
   if(house<1||house>5||slot<0||slot>23)return "DENIED · 하우스/DO 주소 범위 오류";
   int absolute=(house-1)*24+slot,id=absolute/64+1,ch=absolute%64+1;
