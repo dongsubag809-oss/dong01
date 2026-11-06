@@ -53,5 +53,6 @@ public final class SerialPort {
    throw new java.io.IOException("출력 요청 CRC 오류");
   return nativeOutputExchange(request,1200);
  }
+ public static synchronized boolean isOpen(){return LOADED&&opened;}
  public static synchronized void close(){opened=false;if(LOADED)nativeClose();}
 }
