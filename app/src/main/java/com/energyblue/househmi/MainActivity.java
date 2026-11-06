@@ -41,8 +41,7 @@ public final class MainActivity extends Activity {
  // Physical boards present on COM5: default single ID1 for isolated commissioning.
  private int activeBoardCount=1;
  private long armSequence=0;
- // Off by default on every app launch; armed only for explicit no-load bench commissioning.
- private boolean noLoadMultiOutput=false;
+ // Manual control authority resets on disconnect, user lock and app shutdown.
  private long outputArmUntil=0;
  private void markRead(int id,boolean shorted){
   synchronized(plcGuard){
@@ -51,24 +50,21 @@ public final class MainActivity extends Activity {
   }
  }
  private void invalidateReads(){
-  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
-  emit("plcArm","수동 출력 시험 해제 · 통신 재확인 필요");
+  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;}
+  emit("plcArm","수동 제어 잠금 · 통신 재확인 필요");
  }
  private void setActiveBoardCount(int count){
   if(count!=1&&count!=2)throw new IllegalArgumentException("보드 수량은 1장 또는 2장");
   synchronized(plcGuard){
    activeBoardCount=count;
-   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;
+   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;
   }
  }
  private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
- private boolean noLoadTestAuthorized(){
-  synchronized(plcGuard){return noLoadMultiOutput&&outputArmUntil==-1;}
- }
  private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
-  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
-  emit("plcArm","수동 출력 시험 해제 · ID "+id+" 통신 오류");
+  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;armSequence++;}
+  emit("plcArm","수동 제어 잠금 · ID "+id+" 통신 오류");
  }
  private boolean armedAndFresh(int id,boolean shorted){
   synchronized(plcGuard){
@@ -284,7 +280,7 @@ public final class MainActivity extends Activity {
     emit("plcArm","COM5 처리 중입니다. 이전 작업 완료 후 읽어 주세요.");return;
    }
    setActiveBoardCount(boardCount);
-   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 읽기 중 · 출력 시험은 잠금 상태");
+   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 읽기 중 · 수동 제어 잠금");
    plcWorker.execute(()->{
     try{
      for(int slave=1;slave<=boardCount;slave++){
@@ -311,7 +307,7 @@ public final class MainActivity extends Activity {
   /** Manual output activation waits for ongoing automatic FC03 scans instead of
    * rejecting while COM5 is busy. No output is sent during arming.
    */
-  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
+  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 시험 차단: 연결 보드 수 또는 M0 모드 오류");return;
    }
@@ -324,7 +320,7 @@ public final class MainActivity extends Activity {
     armSequence++;
     ticket=armSequence;
     outputArmUntil=0;
-    noLoadMultiOutput=false;
+    
    }
    emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 자동 통신 완료 후 실제 상태 및 안전 설정 확인 중 · 현재 출력 잠금");
    plcWorker.execute(()->{
@@ -349,15 +345,13 @@ public final class MainActivity extends Activity {
      synchronized(plcGuard){
       if(ticket!=armSequence||destroyed)throw new java.io.IOException("시험 승인 취소 또는 통신 상태 변경");
       outputArmUntil=-1;
-      noLoadMultiOutput=noLoadBench;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
-       (noLoadBench?" 무부하 다채널 자유 ON/OFF":" 일반 단일 채널")+
-       " · 시험 잠금/통신 장애/앱 종료까지 유지";
+       " 수동 제어 활성 · 단일 DO 출력 제한 · 사용자 잠금/통신 장애/앱 종료까지 유지";
     }catch(Exception ex){
      synchronized(plcGuard){
       if(ticket==armSequence){
-       outputArmUntil=0;noLoadMultiOutput=false;
+       outputArmUntil=0;
        lastGoodRead[0]=0;lastGoodRead[1]=0;
        armSequence++;
       }
@@ -371,8 +365,8 @@ public final class MainActivity extends Activity {
    });
   }
   @JavascriptInterface public String disarmManualOutputs(){
-   synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;armSequence++;}
-   return "수동 DO 시험 잠금. 이미 ON인 출력은 자동으로 OFF하지 않습니다.";
+   synchronized(plcGuard){outputArmUntil=0;armSequence++;}
+   return "수동 제어 잠금 · 이미 ON인 DO 출력은 자동으로 OFF되지 않습니다.";
   }
   /** Single-channel commissioning, no silent retries; both board outputs checked for conflicts.
    * Physical limit DI and direction mapping unknown: never assume a safe motor pairing.
@@ -391,7 +385,7 @@ public final class MainActivity extends Activity {
     boolean commandSent=false;
     try{
      if(destroyed||!armedAndFresh(slave,shorted))
-      throw new java.io.IOException("출력 시험 미활성·선택 모드 불일치·승인 종료");
+      throw new java.io.IOException("수동 제어 미활성 · 연결 상태 또는 모드 확인 필요");
      boolean[] modes=modesSnapshot();
      int boardCount=activeBoards();
      if(slave>boardCount)throw new java.io.IOException("연결되지 않은 PLC ID 출력 차단");
@@ -406,17 +400,16 @@ public final class MainActivity extends Activity {
       return;
      }
      if(on){
-      // Commissioning bench mode is explicitly armed only when NO loads are connected.
-      // Preserve the global one-active-channel rule for ordinary/single-output mode.
-      if(!noLoadTestAuthorized()&&otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("다른 DO가 ON입니다. 단일 출력 시험 모드에서는 추가 ON 차단. 무부하 시험 모드를 선택하려면 먼저 출력 부하를 모두 분리하세요.");
+      // Preserve global one-active-output rule until motor wiring is verified.
+      if(otherOutputActive(states,slave,channel,boardCount))
+       throw new java.io.IOException("다른 DO가 ON입니다. 정·역 결선 확인 전 추가 ON 명령을 차단합니다.");
       // Keep the existing 0.5s pre-actuation delay and fresh CRC/safety checks.
       Thread.sleep(500);
       if(!armedAndFresh(slave,shorted))
        throw new java.io.IOException("재점검 중 수동 승인/통신 신선도 만료");
       states=scanActiveBoards(modes,boardCount);
-      if(!noLoadTestAuthorized()&&otherOutputActive(states,slave,channel,boardCount))
-       throw new java.io.IOException("단일 출력 모드: 다른 DO ON 감지, ON 명령 취소");
+      if(otherOutputActive(states,slave,channel,boardCount))
+       throw new java.io.IOException("다른 DO가 ON 상태입니다. 새 출력 ON 취소");
       guard=ModbusReadOnly.safetyProblem(slave);
       if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
      }
