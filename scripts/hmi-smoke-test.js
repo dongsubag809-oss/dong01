@@ -189,6 +189,12 @@ ctx.doRegistry["1-9"]="내측 좌측 맞춤 이름";
 assert.strictEqual(ctx.assignedDoName(1,9),"내측 좌측 맞춤 이름","User-customized 128-channel label not applied");
 ctx.doRegistry["1-9"]="";// clear test override; original user edits remain persisted via localStorage
 assert(html.includes('readonly onclick="openKeyboard(this)"'),"Korean editable DO name fields must remain");
+ctx.contactNames["1"]=["사용자 내창 좌측"];
+assert(ctx.assignedDoName(1,9).includes("사용자 내창 좌측 열림"),"Existing device alias name not reflected in mapped DO label");
+delete ctx.contactNames["1"];
+assert(!html.includes("window.confirm("),"PLC test must not show confirmation popups");
+assert(html.includes('value="bench"'),"128-channel disconnected-load test mode missing");
+
 ctx.selected=1;
 ctx.renderMappedHouse();
 assert(node("manualControls").innerHTML.includes("ID 1 / DO09"),"Mapped HMI device card missing exact PLC address");
