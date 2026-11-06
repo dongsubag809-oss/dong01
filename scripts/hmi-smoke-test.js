@@ -72,10 +72,10 @@ const shown = ctx.plcGrid("0".repeat(64),"DO 01~64",1,true);
 assert(shown.includes("tapDo(1,1)")&&shown.includes("tapDo(1,64)"),"All DO tiles must be touchable");
 assert.strictEqual((shown.match(/<button /g)||[]).length,64,"DO 1~64 count");
 assert(!ctx.plcGrid("0".repeat(64),"DI 01~64",2,false).includes("tapDo("),"DI must not control output");
-let requested=null;
+let requested=null,armingModes=null;
 ctx.window.confirm=()=>true;
 ctx.window.NativeDiagnostics={
- armManualOutputs:()=>"ARM_OK 60 seconds",
+ armManualOutputs:(m1,m2)=>{armingModes=[m1,m2];},
  disarmManualOutputs:()=>"잠금",
  setDoOutput:(id,ch,on,mode)=>{requested={id,ch,on,mode};}
 };
@@ -83,6 +83,10 @@ node("plcSafetyAck").checked=true;
 node("plcMode1").value="default";
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
 ctx.armDoTest();
+assert.strictEqual(ctx.plcArmed,false,"Outputs must remain locked during asynchronous fresh scan");
+assert(armingModes&&armingModes[0]==="default","PLC commissioning must request actual configured M0 modes");
+ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"ARM_OK · PLC ID 1/2 fresh CRC verified"}));
+assert.strictEqual(ctx.plcArmed,true,"Only confirmed PLC fresh scan may enable DO");
 ctx.tapDo(1,64);
 assert(requested&&requested.id===1&&requested.ch===64&&requested.on===true&&requested.mode==="default","ON request must use real readback OFF state");
 ctx.plcWriteReceived(JSON.stringify({id:1,ch:64,status:"CONFIRMED",message:"실수신 일치"}));
@@ -93,6 +97,13 @@ ctx.plcWriteReceived(JSON.stringify({id:1,ch:64,status:"UNKNOWN",message:"unknow
 assert.strictEqual(ctx.plcDoStates[1],null,"Unknown physical output must invalidate displayed state");
 assert.strictEqual(ctx.plcArmed,false,"Unconfirmed output disables commissioning");
 assert(html.includes("실제 출력 시험 안전 확인")&&html.includes("0.5초"),"Commissioning warning and interlock note missing");
-assert(fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8").includes("safetyConfigAllowsManual"),"Remote/relationship safety guard missing");
+const mainSrc=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
+assert(mainSrc.includes("ModbusReadOnly.safetyProblem"),"Remote/relationship safety guard missing");
+assert(mainSrc.includes("void armManualOutputs(String mode1,String mode2)"),"Asynchronous arm with fresh M0 modes missing");
+assert(mainSrc.includes("outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS"),"Arm must start AFTER PLC scans");
+assert(mainSrc.includes("if(block!=null)throw new java.io.IOException(block)"),"Unsafe remote output config must deny arming");
+ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"수동 출력 시험 차단: ID 1 R245=1"}));
+assert.strictEqual(ctx.plcArmed,false,"Failed safety register check must lock DO");
+assert(node("plcArmStatus").textContent.includes("R245=1"),"Block reason must reach visible HMI");
 
 console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded 128-channel DO taps and real readback.");
