@@ -110,7 +110,8 @@ assert(html.includes("부하 미연결 상태를 먼저 확인")&&html.includes(
 const mainSrc=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
 assert(mainSrc.includes("ModbusReadOnly.safetyProblem"),"Remote/relationship safety guard missing");
 assert(mainSrc.includes("void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench)"),"Asynchronous arming bridge signature missing");
-assert(mainSrc.includes("outputArmUntil=noLoadBench?-1:android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS"),"Arming options missing");
+assert(mainSrc.includes("outputArmUntil=-1;"),"Session-only arming without timer missing");
+assert(!mainSrc.includes("OUTPUT_ARM_MS"),"Obsolete sixty-second authorization timer remains");
 assert(mainSrc.includes("if(blocked!=null)throw new java.io.IOException(blocked)"),"Unsafe remote output config must deny arming");
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"수동 출력 시험 차단: ID 1 R245=1"}));
 assert.strictEqual(ctx.plcArmed,false,"Failed safety register check must lock DO");
