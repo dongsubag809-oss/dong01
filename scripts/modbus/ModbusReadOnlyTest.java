@@ -32,6 +32,36 @@ public final class ModbusReadOnlyTest {
   int ecrc=ModbusReadOnly.crc16(exception,3);exception[3]=(byte)ecrc;exception[4]=(byte)(ecrc>>>8);
   try{ModbusReadOnly.parse64(1,exception);throw new AssertionError("exception accepted");}
   catch(IOException expected){check(expected.getMessage().contains("예외"),"modbus error handling");}
-  System.out.println("PASS: N4D4F64 FC03 CRC, register maps, DI/DO bit order and exception handling");
+  // Verify actual command frames against old n4d4f64.py output_request(slave,mode,channel,on).
+  for(int id=1;id<=2;id++)for(int ch=1;ch<=64;ch++){
+   for(boolean m0:new boolean[]{false,true})for(boolean on:new boolean[]{false,true}){
+    byte[] cmd=ModbusOutput.request(id,m0,ch,on);
+    int fn=cmd[1]&255,v=((cmd[4]&255)<<8)|(cmd[5]&255);
+    check((cmd[0]&255)==id&&(cmd[3]&255)==ch-1,"output address");
+    check(fn==(m0?5:6),"output function code");
+    check(v==(m0?(on?0xff00:0):(on?0x0100:0x0200)),"output ON/OFF payload");
+    check(ModbusReadOnly.crc16(cmd,6)==(((cmd[7]&255)<<8)|(cmd[6]&255)),"output CRC");
+    ModbusOutput.verifyEcho(cmd,cmd.clone());
+    byte[] corrupt=cmd.clone();corrupt[5]^=1;
+    try{ModbusOutput.verifyEcho(cmd,corrupt);throw new AssertionError("corrupt write accepted");}
+    catch(IOException expected){check(expected.getMessage().contains("CRC"),"write CRC verification");}
+   }
+  }
+  // Remote-output linkage and relationship registers are only read by FC03.
+  for(int id=1;id<=2;id++){
+   byte[] safe1=ModbusReadOnly.readWordsRequest(id,245,4);
+   byte[] safe2=ModbusReadOnly.readWordsRequest(id,250,1);
+   check((safe1[1]&255)==3&&(safe1[3]&255)==245&&(safe1[5]&255)==4,"remote guard read");
+   check((safe2[1]&255)==3&&(safe2[3]&255)==250&&(safe2[5]&255)==1,"relationship guard read");
+   int[] config=ModbusReadOnly.parseWords(id,4,response(id,new int[]{0,0,7,0}));
+   check(config[0]==0&&config[1]==0&&config[2]==7&&config[3]==0,"remote register word decoding");
+  }
+  try{ModbusOutput.request(2,false,65,true);throw new AssertionError("invalid DO channel accepted");}
+  catch(IllegalArgumentException expected){}
+  byte[] refused=ModbusOutput.request(1,false,1,true);
+  byte[] wrong=ModbusOutput.request(1,false,1,false);
+  try{ModbusOutput.verifyEcho(refused,wrong);throw new AssertionError("wrong command echo accepted");}
+  catch(IOException expected){check(expected.getMessage().contains("반향"),"write echo mismatch");}
+  System.out.println("PASS: N4D4F64 FC03 reads, FC05/FC06 single DO ON/OFF, CRC, echo, safety guards, 128ch addresses.");
  }
 }
