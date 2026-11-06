@@ -80,7 +80,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <section id="nutrient" class="page"><h2>양액·관수</h2><div class="grid2"><div class="panel"><h3>공통 양액 혼합 장치</h3><table><tr><td>A 원액</td><td>미연결</td></tr><tr><td>B 원액</td><td>미연결</td></tr><tr><td>C 원액</td><td>미연결</td></tr><tr><td>D 물</td><td>미연결</td></tr></table></div><div class="panel"><h3>5동 관수 밸브 상태</h3><table id="valves"></table><p class="warn">밸브-펌프 연동 및 유량 안전조건 검증 전까지 명령 전송을 차단합니다.</p></div></div></section>
 <section id="io" class="page"><h2>I/O 및 통신 진단</h2><div class="grid2"><div class="panel"><h3>PLC / 센서 연결 정보</h3><p>COM5: PLC Slave ID 1·2</p><p>COM6: 센서 RS-485 예약</p><p>출력: ID 1 DO01~DO64 + ID 2 DO01~DO64 = 총 128DO (장비별 결선표 검증 필요)</p><div class="row"><label>COM5 실제 장치 경로 <input id="com5Path" placeholder="/dev/tty..." value="/dev/ttyS5" style="width:190px" autocomplete="off"></label><label>속도 <select id="com5Baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label></div><div class="row" style="margin:10px 0"><button onclick="openCom5()">COM5 포트 열기</button><button onclick="closeCom5()">포트 닫기</button><button onclick="probe()">장치 경로 확인</button></div><p class="muted">PLC Slave ID 1·2 유지. 실제 포트 경로를 입력해야 하며 주소·명령은 변경하지 않습니다. 8N1 포트 개방 및 별도 읽기전용 Modbus FC03 응답 시험을 지원합니다.</p><div class="log" id="out">실제 PLC 제어 명령 잠금</div>
 <div class="plc-read-panel"><h3>N4D4F64 실수신 모니터 · 수동 1채널 시험</h3>
-<p class="muted">먼저 COM5 포트를 연 뒤 ID별 M0 점퍼 상태를 선택하세요. 기존 n4d4f64.py의 Modbus FC03 읽기만 송신합니다.</p>
+<p class="muted">COM5 포트를 열고 ID별 M0 모드를 선택하세요. 데이터 읽기가 정상인 상태에서 수동 DO 시험 활성화를 누르면 ID 1·2를 다시 조회하여 출력 시험 가능 여부를 검사합니다.</p>
 <div class="row"><label>ID 1 모드 <select id="plcMode1"><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label>
 <label>ID 2 모드 <select id="plcMode2"><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label></div>
 <button class="primary" onclick="readBothPlcs()" style="margin-top:10px">PLC ID 1·2 실제 데이터 읽기</button>
@@ -90,7 +90,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <label><input type="checkbox" id="plcSafetyAck"> 현장 안전 및 출력 결선 확인을 완료했고, 단일 채널만 시험합니다. (설정은 저장하지 않음)</label>
 <div class="row"><button type="button" onclick="armDoTest()">수동 DO 시험 활성화 (60초)</button>
 <button type="button" onclick="disarmDoTest()">시험 잠금</button></div>
-<p id="plcArmStatus" class="plc-arm-status">출력 잠금 · 먼저 PLC 두 장을 읽어 주세요.</p>
+<p id="plcArmStatus" class="plc-arm-status">출력 잠금 · COM5 OPEN_OK 및 ID 1·2 응답 확인 후 [수동 DO 시험 활성화]를 눌러 주세요. 승인 버튼이 PLC를 다시 읽습니다.</p>
 <p class="muted">ON 전 두 보드 128DO를 재확인합니다. 다른 출력이 하나라도 ON이면 추가 ON 명령을 차단하며, 명령 전 0.5초 재검사합니다. DO 클릭 시 ON/OFF를 다시 확인합니다.</p>
 </div>
 <p class="warn">DO 색상은 PLC가 보고한 상태이며, 전압·모터 동작의 실측 확인값은 아닙니다. 출력 명령은 응답 CRC와 DO 재수신 확인 후에만 성공으로 표시합니다.</p>
@@ -196,10 +196,11 @@ function armDoTest(){
  if(!el('plcSafetyAck').checked){msg.textContent='먼저 현장 안전 및 결선을 확인한 뒤 체크하세요.';return;}
  if(!window.confirm('PLC 실제 출력을 시험 모드로 활성화할까요?\\n정·역 모터와 리미트 결선이 미확인된 채널은 절대 ON하지 마세요.'))return;
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.armManualOutputs){msg.textContent='지원하지 않는 APK입니다.';return;}
- var result=window.NativeDiagnostics.armManualOutputs();
- plcArmed=result.indexOf('ARM_OK')===0;
- plcArmDeadline=plcArmed?Date.now()+60000:0;
- msg.textContent=result;
+ plcArmed=false;plcArmDeadline=0;
+ msg.textContent='PLC ID 1·2 실제 데이터 및 연동 설정 재확인 중입니다. 아직 출력 승인이 아닙니다.';
+ try{
+  window.NativeDiagnostics.armManualOutputs(el('plcMode1').value,el('plcMode2').value);
+ }catch(e){msg.textContent='출력 시험 승인 요청 오류: '+e.message;}
 }
 function disarmDoTest(){
  plcArmed=false;plcArmDeadline=0;el('plcSafetyAck').checked=false;
@@ -209,7 +210,7 @@ function disarmDoTest(){
 function tapDo(id,ch){
  var state=plcDoStates[id],msg=el('plcReadLog');
  if(!state||state.length!==64){msg.textContent='ID '+id+' DO 상태가 미수신입니다. 먼저 읽기 실행';return;}
- if(!plcArmed||Date.now()>plcArmDeadline){plcArmed=false;msg.textContent='시험 승인 시간 만료. 체크 후 수동 DO 시험을 다시 활성화하세요.';return;}
+ if(!plcArmed||Date.now()>plcArmDeadline){plcArmed=false;msg.textContent='출력 잠금: 상단 안전 확인 체크 → 수동 DO 시험 활성화 → PLC 재조회 승인(ARM_OK)을 먼저 확인하세요.';return;}
  if(plcCommandBusy){msg.textContent='이전 출력 명령 처리 중입니다.';return;}
  var on=state.charAt(ch-1)!=='1',mode=el('plcMode'+id).value;
  var label=on?'ON · 실제 출력 구동':'OFF · 출력 정지';
@@ -271,7 +272,15 @@ function plcWriteReceived(raw){
  }catch(e){plcCommandBusy=false;el('plcReadLog').textContent='출력 응답 표시 오류 '+e.message}
 }
 function probe(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.probe('/dev/ttyS5'):'Android HMI 앱 전용'}
-window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcArm'){plcArmed=false;plcArmDeadline=0;el('plcArmStatus').textContent=p.message;return;}var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
+window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcArm'){
+ var armMessage=p.message||'';
+ var authorized=armMessage.indexOf('ARM_OK')===0;
+ plcArmed=authorized;
+ plcArmDeadline=authorized?Date.now()+60000:0;
+ el('plcArmStatus').textContent=armMessage;
+ if(!authorized)el('plcReadLog').textContent=armMessage;
+ return;
+}var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
 render();refreshIp();if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
 </script></body></html>
