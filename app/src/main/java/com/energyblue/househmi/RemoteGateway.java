@@ -52,10 +52,11 @@ public final class RemoteGateway implements AutoCloseable {
   this.tlsSource=source==null?this::sslContext:source;
  }
  public JSONObject enable(boolean controls)throws Exception{
+  close();
   final long epoch;
   synchronized(this){
    if(disposed)throw new IOException("HMI gateway disposed");
-   close();epoch=++generation;state="starting";lastError="";lastTlsError="";
+   epoch=++generation;state="starting";lastError="";lastTlsError="";
    lastClient="";lastTcpAt=0;lastTlsAt=0;lastPageAt=0;
   }
   SSLServerSocket candidate=null;
@@ -85,8 +86,8 @@ public final class RemoteGateway implements AutoCloseable {
    }
    return information();
   }catch(Exception ex){
+   shutdown(epoch,detail(ex),true);
    if(candidate!=null)try{candidate.close();}catch(Exception ignored){}
-   synchronized(this){if(epoch==generation){close();state="failed";lastError=detail(ex);}}
    throw ex;
   }
  }
@@ -107,16 +108,31 @@ public final class RemoteGateway implements AutoCloseable {
   pairCode=String.format(Locale.US,"%06d",random.nextInt(1000000));
   codeExpiry=System.currentTimeMillis()+300000;
  }
- public synchronized void close(){
-  ++generation;running=false;ready=false;state="stopped";allowControl=false;
-  token="";tokenExpiry=0;pairCode="";codeExpiry=0;
-  if(server!=null)try{server.close();}catch(Exception ignored){}
-  server=null;
-  for(SSLSocket socket:activeSockets)try{socket.close();}catch(Exception ignored){}
-  activeSockets.clear();
-  connections.getQueue().clear();
+ public void close(){shutdown(-1,null,true);}
+ private void shutdown(long expected,String error,boolean awaitListener){
+  final SSLServerSocket bound;
+  final Thread previous;
+  final java.util.ArrayList<SSLSocket> sockets;
+  synchronized(this){
+   if(expected!=-1&&generation!=expected)return;
+   ++generation;running=false;ready=false;state=error==null?"stopped":"failed";allowControl=false;
+   if(error!=null)lastError=error;
+   token="";tokenExpiry=0;pairCode="";codeExpiry=0;
+   bound=server;server=null;previous=listener;listener=null;
+   sockets=new java.util.ArrayList<>(activeSockets);activeSockets.clear();connections.getQueue().clear();
+  }
+  if(bound!=null)try{bound.close();}catch(Exception ignored){}
+  for(SSLSocket socket:sockets)try{socket.close();}catch(Exception ignored){}
+  // Closing a socket while accept() is in flight may defer the native FD release.
+  // Wait outside the state lock, and only on the phone worker, before rebinding.
+  if(awaitListener&&previous!=null&&previous!=Thread.currentThread()){
+   try{previous.join(2000);}catch(InterruptedException ex){Thread.currentThread().interrupt();}
+  }
  }
- public synchronized void dispose(){disposed=true;close();connections.shutdownNow();}
+ public void dispose(){
+  synchronized(this){disposed=true;}
+  shutdown(-1,null,false);connections.shutdownNow();
+ }
  private static String detail(Throwable error){
   StringBuilder text=new StringBuilder(error.getClass().getSimpleName());
   for(Throwable e=error;e!=null;e=e.getCause()){
@@ -224,7 +240,7 @@ public final class RemoteGateway implements AutoCloseable {
     catch(RejectedExecutionException busy){activeSockets.remove(socket);socket.close();}
    }catch(SocketTimeoutException expected){}
     catch(Exception ex){
-     synchronized(this){if(current(bound,epoch)){close();state="failed";lastError="HTTPS 수신 중단: "+detail(ex);}}
+     shutdown(epoch,"HTTPS 수신 중단: "+detail(ex),false);
      break;
     }
   }

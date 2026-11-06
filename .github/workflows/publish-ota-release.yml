@@ -126,7 +126,7 @@ jobs:
             "V5.04: motor OPEN STOP CLOSE button full-background colors from received PLC states" \
             "V5.05: HTTPS phone monitor/control support with one-time pairing, TLS and guarded shared PLC output queue" \
             "${RELEASE_TAG}: HMI phone-access buttons show current actual server monitor/control/stopped mode in full-width green/blue/brown backgrounds; remove erroneous fixed monitor primary highlight" \
-            "V5.07: Wi-Fi/LAN/VPN URLs, explicit IPv4 bind, pinned-certificate HTTPS page self-test before ON, AndroidKeyStore identity selection, visible TCP/TLS/page diagnostics, asynchronous phone worker, bounded sockets and generation-safe restart/cancel" \
+            "V5.07: Wi-Fi/LAN/VPN URLs, explicit IPv4 bind, pinned-certificate HTTPS page self-test before ON, AndroidKeyStore identity selection, visible TCP/TLS/page diagnostics, asynchronous phone worker, bounded sockets and generation-safe restart/cancel with joined listener shutdown before rebind" \
             "V5.07 review: V5.06 selected-mode colors preserved; PLC serial/Modbus sources, mappings and all local output/interlock implementations unchanged" \
             "V5.07 validation: 41 actual JVM TLS/HTTP checks plus HMI/mobile regressions, Modbus CRC/parser, signed Android release build and lint. Physical HMI/phone/network/PLC verification remains pending." \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"

@@ -126,7 +126,7 @@ public final class RemoteGatewayRuntimeTest {
    }
    field(gateway,"fingerprint","0".repeat(64));
    try{gateway.enable(false);throw new AssertionError("Wrong pinned certificate accepted");}catch(SSLException expected){checks++;}
-   check(!gateway.isRunning()&&!gateway.information().getBoolean("selfTestOk"),"Wrong certificate fails closed before issuing pairing code");
+   check(!gateway.isRunning()&&!gateway.information().getBoolean("selfTestOk")&&gateway.information().getString("error").contains("지문 불일치"),"Wrong certificate fails closed before issuing pairing code");
    field(gateway,"fingerprint",fingerprint);
    gateway.enable(false);check(gateway.isRunning(),"Valid TLS recovers after failed startup");
   }finally{gateway.dispose();}
