@@ -100,8 +100,9 @@ assert(node("houseComm5").textContent==="통신 미연결","Lost ID2 must revoke
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:true})}));
 const zeros="0".repeat(64);
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:zeros,do:zeros,diSummary:"ON 0",doSummary:"ON 0",mode:"M0 개방"}));
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:false})}));
 ctx.activateManualControl();
-assert.strictEqual(armed[2],1,"Manual activation must use physically present ID1 only");
+assert.strictEqual(armed[2],1,"Manual activation with only physically present ID1 must choose one board");
 assert(!ctx.plcArmed,"Outputs cannot activate until native confirmation");
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"ARM_OK · PLC ID1 verified"}));
 assert(ctx.plcArmed,"Actual native CRC confirmation must authorize manual outputs");
