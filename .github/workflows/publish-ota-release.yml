@@ -22,6 +22,8 @@ jobs:
           gradle-version: '8.10.2'
       - name: Test HMI menu, WebView JS, and Korean input
         run: node scripts/hmi-smoke-test.js
+      - name: Test secure mobile gateway integration and guards
+        run: node scripts/remote-gateway-test.js
       - name: Test N4D4F64 Modbus FC03 CRC and 64-channel parsing
         run: |
           set -euo pipefail
@@ -116,7 +118,8 @@ jobs:
             "V5.01: actual-output HMI, three-button motor control and software forward/reverse 0.5s interlock" \
             "V5.02: green CRC-verified PLC dashboard statuses, latched red emergency stop and developer 박동수 in the header" \
             "V5.03: greenhouse ON/OFF buttons show PLC-received green ON or blue OFF with redundant status line removed" \
-            "${RELEASE_TAG}: motor OPEN/STOP/CLOSE selected buttons fill green/orange/blue from CRC-verified PLC DO actual readback; no changes to command or interlock logic" \
+            "V5.04: motor OPEN STOP CLOSE button full-background colors from received PLC states" \
+            "${RELEASE_TAG}: HTTPS phone monitoring and guarded remote DO/motor commands; 6-digit local pairing, 2-hour session, AndroidKeyStore TLS, 128DO real CRC readback, no automatic remote activation" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -141,6 +144,12 @@ jobs:
             "5h. Header developer identification: 박동수. DI limit addresses and physical motor wiring remain unverified." \
             "5i. V5.03: On the Manual page, green ON and blue OFF button backgrounds follow actual CRC-verified PLC DO readback only. No color change merely on tap; duplicate DO state caption removed." \
             "5j. V5.04: Motor OPEN green, STOP orange, CLOSE blue fills the selected whole button only on actual PLC DO state readback (not on a click). The motor reverse interlock is unchanged." \
+            "7. V5.05 phone access: HMI Settings -> Phone Access -> Enable monitor (default) or monitor+control. Record the HMI HTTPS URL, 6-digit one-time code and certificate SHA-256 fingerprint." \
+            "7a. Use phone on the same trusted Wi-Fi or properly protected VPN. Open https://HMI-IP:18443. Browser does not automatically trust Android-generated self-signed TLS certificate: verify fingerprint first; do not ignore mismatches." \
+            "7b. Enter code within 5 minutes. Pairing is one use only with 5 failed-attempt lockout. Session expires after 2 hours and is not saved in phone storage." \
+            "7c. HMI must separately activate on-site Manual Operation for remote DO or motor writes. Existing shared PLC command queue and reverse-direction interlocks are mandatory." \
+            "7d. Remote Emergency is a software request only. No guaranteed fail-safe stop without hardwired safety circuit. Phone connection/TLS trust and live PLC actions are NOT hardware-verified." \
+            "7e. Do NOT port-forward TCP 18443 to the public Internet. Disable Phone Access at HMI after use; remote access does NOT start automatically on reboot." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
