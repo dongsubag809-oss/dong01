@@ -247,7 +247,7 @@ function resetContactNames(){var h=String(el("editHouse").value);delete contactN
 var doRegistry={};try{var savedDo=JSON.parse(localStorage.getItem("eb-do-labels"));if(savedDo&&typeof savedDo==="object"&&!Array.isArray(savedDo))doRegistry=savedDo}catch(e){}
 function doAddress(id,n){return "ID "+id+" / DO"+("0"+n).slice(-2)}
 function renderDoRegistry(){var id=el("doPlcId").value;el("doRegistry").innerHTML=Array.apply(null,Array(64)).map(function(_,i){var n=i+1,k=id+"-"+n;return '<div class="row" style="margin:7px 0"><label style="min-width:118px">'+doAddress(id,n)+'</label><input maxlength="40" style="flex:1" id="doReg'+n+'" readonly onclick="openKeyboard(this)" placeholder="미지정 출력" value="'+esc(assignedDoName(+id,n))+'"></div>'}).join("")}
-function saveDoRegistry(){var id=el("doPlcId").value;for(var n=1;n<=64;n++){var k=id+"-"+n,v=el("doReg"+n).value.trim();if(v)doRegistry[k]=v;else delete doRegistry[k]}try{localStorage.setItem("eb-do-labels",JSON.stringify(doRegistry));el("doRegistryStatus").textContent="ID "+id+" DO01~DO64 이름 저장 완료 · 논리주소는 고정";renderMappedHouse();renderRawManual()}catch(e){el("doRegistryStatus").textContent="저장 실패"}}
+function saveDoRegistry(){var id=el("doPlcId").value;for(var n=1;n<=64;n++){var k=id+"-"+n,v=el("doReg"+n).value.trim();if(v===assignedDoName(+id,n))continue;if(!v||v===defaultDoName(+id,n))delete doRegistry[k];else doRegistry[k]=v}try{localStorage.setItem("eb-do-labels",JSON.stringify(doRegistry));el("doRegistryStatus").textContent="ID "+id+" DO01~DO64 이름 저장 완료 · 논리주소는 고정";renderMappedHouse();renderRawManual()}catch(e){el("doRegistryStatus").textContent="저장 실패"}}
 function renderMappedHouse(){
  var target=el('manualControls');
  if(!target)return;
