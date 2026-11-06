@@ -386,7 +386,7 @@ function plcBoardCountChanged(){
  plcDoStates[1]=null;plcDoStates[2]=null;
  el('plcMode2').disabled=count===1;
  el('plcBoard1').textContent='ID 1 · 보드 수 변경 · 다시 읽기 필요';
- el('plcBoard2').textContent=count===1?'ID 2 · 자동 연결 감시 중 · 수동 출력 제외':'ID 2 · 보드 연결 후 읽기 대기';
+ el('plcBoard2').textContent=count===1?'ID 2 · 자동 연결 감시 중 · 수동 출력 시험 제외':'ID 2 · 보드 연결 후 읽기 대기';
  el('plcReadLog').textContent=count===1?'수동 시험 대상: ID 1. 자동 상태 감시는 ID 2도 계속 확인합니다.':'수동 시험 대상: ID 1·2, 두 보드 응답 필요';
  renderRawManual();
 }
