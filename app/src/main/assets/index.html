@@ -87,6 +87,7 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <button class="primary" onclick="readBothPlcs()" style="margin-top:10px">선택 PLC 실제 데이터 읽기</button>
 <div class="plc-safety">
 <strong>실제 출력 시험 · 부하 미연결 상태를 먼저 확인하세요</strong>
+<div class="row"><label>시험 종류 <select id="plcTestMode" onchange="disarmDoTest()"><option value="single">단일 채널 출력 시험</option><option value="bench">부하 미연결 보드 시험</option></select></label></div>
 <p class="warn">출력은 실제 장비를 작동시킬 수 있습니다. 결선표, 외부 비상정지, 모터 리미트 스위치와 작업자 안전을 확인하세요. 실제 모터·펌프 부하가 연결된 채널은 회로 검증 전 ON하지 마세요.</p>
 <label><input type="checkbox" id="plcSafetyAck"> 현장 안전 및 출력 결선 확인을 완료했고, 단일 채널만 시험합니다. (설정은 저장하지 않음)</label>
 <div class="row"><button type="button" onclick="armDoTest()">수동 DO 시험 활성화 (60초)</button>
