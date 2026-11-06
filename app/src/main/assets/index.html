@@ -214,7 +214,7 @@ function armDoTest(){
  plcArmed=false;plcArmDeadline=0;
  msg.textContent='PLC ID 1'+(selectedPlcCount()===2?'·2':'')+' 실제 수신/안전 설정 재검사 중 · 아직 승인되지 않음';
  try{
-  window.NativeDiagnostics.armManualOutputs(el('plcMode1').value,el('plcMode2').value,selectedPlcCount());
+  window.NativeDiagnostics.armManualOutputs(el('plcMode1').value,el('plcMode2').value,selectedPlcCount(),el('plcTestMode').value==='bench');
  }catch(e){msg.textContent='출력 시험 승인 요청 오류: '+e.message;}
 }
 function disarmDoTest(){
