@@ -99,44 +99,37 @@ public final class ReleaseUpdater {
    verifiedApk=out;send("update","다운로드 및 SHA-256 검증 완료: "+name+" / 설치 버튼을 누르세요.");
   }catch(Exception e){out.delete();verifiedApk=null;send("update","다운로드 실패: "+e.getMessage());}
  });}
- private static final int REQUEST_SAVE_APK = 4861;
+ /** Opens the standard Android package installer for the SHA-256 verified APK.
+  * The user must approve installation; this does not bypass Play Protect.
+  * Existing app data is preserved only if Android accepts the same package/signature.
+  */
  void install(){
-  File file=verifiedApk;
-  if(file==null||!file.exists()){send("update","검증된 APK가 없습니다. 먼저 다운로드해 주세요.");return;}
-  main.post(()->{
-   try{
-    Intent choose=new Intent(Intent.ACTION_CREATE_DOCUMENT);
-    choose.addCategory(Intent.CATEGORY_OPENABLE);
-    choose.setType("application/vnd.android.package-archive");
-    choose.putExtra(Intent.EXTRA_TITLE,expectedName==null?"ENERGYBLUE_HMI_update.apk":expectedName);
-    activity.startActivityForResult(choose,REQUEST_SAVE_APK);
-    send("update","저장 위치를 선택하세요. APK를 직접 설치하지 않습니다.");
-   }catch(Exception ex){send("update","파일 저장 창 열기 실패: "+ex.getMessage());}
-  });
- }
- boolean onExportResult(int requestCode,int resultCode,Intent data){
-  if(requestCode!=REQUEST_SAVE_APK)return false;
-  if(resultCode!=Activity.RESULT_OK||data==null||data.getData()==null){
-   send("update","사용자가 APK 저장을 취소했습니다.");return true;
+  final File file=verifiedApk;
+  if(file==null||!file.isFile()){
+   send("update","검증된 APK가 없습니다. 먼저 업데이트 검색과 다운로드를 진행하세요.");
+   return;
   }
-  final Uri target=data.getData();
-  final File source=verifiedApk;
-  if(source==null||!source.isFile()){send("update","검증된 APK가 사라졌습니다. 다시 다운로드해 주세요.");return true;}
-  executor.execute(()->{
-   try(InputStream input=new FileInputStream(source);
-       OutputStream output=activity.getContentResolver().openOutputStream(target,"w")){
-    if(output==null)throw new IOException("선택한 저장 위치를 열 수 없습니다");
-    byte[] buffer=new byte[32768];int n;long total=0;
-    while((n=input.read(buffer))!=-1){
-     if(Thread.currentThread().isInterrupted())throw new IOException("저장 취소됨");
-     total+=n;if(total>150000000)throw new IOException("APK 크기 제한 초과");
-     output.write(buffer,0,n);
+  main.post(()->{
+   if(closed)return;
+   try{
+    if(android.os.Build.VERSION.SDK_INT>=26&&!activity.getPackageManager().canRequestPackageInstalls()){
+     send("update","Android에서 이 앱의 '알 수 없는 앱 설치' 권한을 승인한 뒤 설치 버튼을 다시 눌러 주세요. Play Protect는 우회하지 않습니다.");
+     Intent permission=new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+       Uri.parse("package:"+activity.getPackageName()));
+     activity.startActivity(permission);
+     return;
     }
-    output.flush();
-    send("update","검증된 APK 파일 저장 완료 ("+total+"바이트). 설치는 파일 관리자에서 별도로 진행하세요. Play Protect 경고 시 설치 중단.");
-   }catch(Exception ex){send("update","APK 파일 저장 실패: "+ex.getMessage());}
+    Uri uri=androidx.core.content.FileProvider.getUriForFile(
+      activity,activity.getPackageName()+".files",file);
+    Intent intent=new Intent(Intent.ACTION_VIEW);
+    intent.setDataAndType(uri,"application/vnd.android.package-archive");
+    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    activity.startActivity(intent);
+    send("update","Android 설치 승인 창을 열었습니다. Play Protect의 유해 앱 차단 경고가 나타나면 설치를 취소해 주세요. 기존 앱을 삭제하지 마세요.");
+   }catch(Exception ex){
+    send("update","설치 화면 실행 실패: "+ex.getClass().getSimpleName()+" / "+ex.getMessage());
+   }
   });
-  return true;
  }
  private static boolean trusted(String url){
   try{URL u=new URL(url);return "https".equalsIgnoreCase(u.getProtocol())&&
