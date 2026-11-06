@@ -30,7 +30,13 @@ const ctx=vm.createContext({
  setInterval(){},Date,JSON,console
 });
 scripts.forEach(s=>vm.runInContext(s,ctx,{timeout:4000}));
-assert(node("houses").innerHTML.includes("통신 대기"),"Initial dashboard has no houses");
+assert(node("houses").innerHTML.includes('id="houseComm1"'),"Per-house dashboard PLC status missing");
+assert(node("houseComm1").textContent==="통신 확인 중","Startup must not falsely report good PLC comms");
+assert(ctx.houseCommBoards(1).join(",")==="1","House 1 must follow ID1");
+assert(ctx.houseCommBoards(2).join(",")==="1","House 2 must follow ID1");
+assert(ctx.houseCommBoards(3).join(",")==="1,2","House 3 crosses the ID1/ID2 PLC boundary");
+assert(ctx.houseCommBoards(4).join(",")==="2","House 4 must follow ID2");
+assert(ctx.houseCommBoards(5).join(",")==="2","House 5 must follow ID2");
 assert(html.includes('onclick="activateManualControl()"'),"Actual manual operation enable button missing");
 assert(html.includes('onclick="lockManualControl()"'),"Actual manual operation lock button missing");
 for(const oldElement of ["manualNoLoadAck","plcSafetyAck","plcTestMode","startManualBench","stopManualBench","armDoTest","disarmDoTest"]){
@@ -79,6 +85,19 @@ node("plcBoardCount").value="1";
 node("plcMode1").value="default";
 node("plcMode2").value="default";
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:true})}));
+assert(node("houseComm1").textContent==="통신 양호"&&node("houseComm1").className.includes("good"),"ID1 CRC link must turn houses 1 and 2 green");
+assert(node("houseComm2").textContent==="통신 양호","House 2 shares ID1");
+assert(node("houseComm3").textContent==="통신 확인 중","House 3 cannot go green until ID2 also reports actual link");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:false,detail:"no response"})}));
+assert(node("houseComm3").textContent==="통신 미연결","House 3 must report bad when ID2 absent");
+assert(node("houseComm4").textContent==="통신 미연결","House 4 must report bad when ID2 absent");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:true,detail:"CRC valid"})}));
+assert(node("houseComm3").textContent==="통신 양호","House 3 requires both boards");
+assert(node("houseComm5").textContent==="통신 양호","House 5 uses ID2");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:false})}));
+assert(node("houseComm3").textContent==="통신 미연결","Lost ID2 must revoke house 3 green");
+assert(node("houseComm5").textContent==="통신 미연결","Lost ID2 must revoke house 5 green");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:true})}));
 const zeros="0".repeat(64);
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:zeros,do:zeros,diSummary:"ON 0",doSummary:"ON 0",mode:"M0 개방"}));
 ctx.activateManualControl();
