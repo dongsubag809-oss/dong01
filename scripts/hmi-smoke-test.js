@@ -65,6 +65,8 @@ assert(manifest.includes('android:exported="false"'),"APK provider must not be e
 assert(paths.includes('path="ota/"'),"Restricted verified APK cache mapping missing");
 assert(updater.includes("SHA-256")&&updater.includes("MessageDigest"),"Verified download regression");
 assert(html.includes("선택 PLC 실제 데이터 읽기"),"PLC FC03 diagnostics regressed");
+assert(html.includes('id="plcTestMode"'),"Commissioning mode selector missing");
+assert(html.includes('value="single"')&&html.includes('value="bench"'),"Both commissioning modes must be present");
 assert(html.includes('value="1" selected>1장 · ID 1만 시험'),"Default single-ID1 test mode missing");
 
 
