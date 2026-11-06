@@ -333,11 +333,15 @@ function plcReceived(value){
  try{
   var p=JSON.parse(value),panel=el('plcBoard'+p.id),log=el('plcReadLog');
   if(!panel)return;
-  if(p.id>selectedPlcCount())return;
   if(p.status!=='OK'){
-   plcDoStates[p.id]=null;plcArmed=false;plcArmDeadline=0;el('plcArmStatus').textContent='PLC 읽기 오류 · 시험 자동 잠금';
+   plcDoStates[p.id]=null;
    panel.textContent='ID '+p.id+' · 통신 실패 · '+p.message+' (현재값 미수신)';
-   log.textContent=panel.textContent;
+   if(p.id<=selectedPlcCount()){
+    plcArmed=false;plcArmDeadline=0;
+    el('plcArmStatus').textContent='PLC 읽기 오류 · 출력 시험 잠금';
+    log.textContent=panel.textContent;
+   }
+   renderRawManual();
    return;
   }
   if(typeof p.di!=='string'||typeof p.do!=='string'||p.di.length!==64||p.do.length!==64)throw Error('64점 데이터 형식 오류');
@@ -345,7 +349,8 @@ function plcReceived(value){
   panel.innerHTML='<h3>ID '+p.id+' · CRC 통과 · '+p.mode+'</h3>'+
    '<p class="muted">DI 실제 수신: '+p.diSummary+'</p>'+plcGrid(p.di,'DI 01~64',p.id,false)+
    '<p class="muted">DO 보드 수신: '+p.doSummary+'</p>'+plcGrid(p.do,'DO 01~64 · 터치하면 출력 시험',p.id,true);
-  log.textContent='ID '+p.id+' 정상 수신 · CRC 확인 · 실제 DO 출력 상태는 부하 실측이 아닙니다.';
+  if(p.id<=selectedPlcCount())log.textContent='ID '+p.id+' 정상 수신 · CRC 확인 · DO는 PLC 실수신 접점 상태이며 실제 단자 전압값은 아닙니다.';
+  renderRawManual();
  }catch(e){el('plcReadLog').textContent='PLC 수신 표시 오류: '+e.message}
 }
 
@@ -363,7 +368,7 @@ function plcWriteReceived(raw){
  }catch(e){plcCommandBusy=false;el('plcReadLog').textContent='출력 응답 표시 오류 '+e.message}
 }
 function probe(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.probe('/dev/ttyS5'):'Android HMI 앱 전용'}
-window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcArm'){
+window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='plc'){plcReceived(p.message);return;}if(p.type==='plcWrite'){plcWriteReceived(p.message);return;}if(p.type==='plcLink'){plcLinkReceived(p.message);return;}if(p.type==='plcPort'){el('plcPortStatus').textContent=p.message;return;}if(p.type==='plcArm'){
  var armMessage=p.message||'';
  var authorized=armMessage.indexOf('ARM_OK')===0;
  plcArmed=authorized;
@@ -373,5 +378,5 @@ window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='pl
  return;
 }var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
-render();refreshIp();if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
+render();loadAutoPlcConfig();refreshIp();if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
 </script></body></html>
