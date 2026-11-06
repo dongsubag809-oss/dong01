@@ -78,8 +78,8 @@ ctx.window.NativeDiagnostics={
  disarmManualOutputs:()=>"잠금",
  setDoOutput:(id,ch,on,mode)=>{requested={id,ch,on,mode};}
 };
-nodes.plcSafetyAck.checked=true;
-nodes.plcMode1.value="default";
+node("plcSafetyAck").checked=true;
+node("plcMode1").value="default";
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
 ctx.armDoTest();
 ctx.tapDo(1,64);
