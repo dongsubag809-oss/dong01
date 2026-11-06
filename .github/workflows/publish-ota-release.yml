@@ -27,8 +27,9 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi" "$RUNNER_TEMP/modbus-test-classes"
           cp app/src/main/java/com/energyblue/househmi/ModbusReadOnly.java "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"
+          cp app/src/main/java/com/energyblue/househmi/ModbusOutput.java "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"
           cp scripts/modbus/ModbusReadOnlyTest.java "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"
-          printf 'package com.energyblue.househmi; public final class SerialPort {public static byte[] exchangeRead(byte[] req) throws java.io.IOException {throw new java.io.IOException("test stub");}}\n' > "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/SerialPort.java"
+          printf 'package com.energyblue.househmi; public final class SerialPort {public static byte[] exchangeRead(byte[] req) throws java.io.IOException {throw new java.io.IOException("test stub");} public static byte[] exchangeOutput(byte[] req) throws java.io.IOException {throw new java.io.IOException("test stub");}}\n' > "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/SerialPort.java"
           javac -encoding UTF-8 -d "$RUNNER_TEMP/modbus-test-classes" "$RUNNER_TEMP/modbus-test-src/com/energyblue/househmi/"*.java
           java -cp "$RUNNER_TEMP/modbus-test-classes" com.energyblue.househmi.ModbusReadOnlyTest
       - name: Validate update signing secrets
@@ -93,7 +94,8 @@ jobs:
             "V4.88: removed automatic update downloads; warning unresolved" \
             "V4.89: Korean keyboard regression tests, WebView repairs, in-app installer removed" \
             "V4.90: N4D4F64 Modbus FC03 ID 1/2 read-only PLC state monitor" \
-            "${RELEASE_TAG}: restore in-app OTA Android install approval after SHA-256 validation; retain read-only PLC and Korean UI" \
+            "V4.91: in-app OTA install approval restored after SHA-256 check" \
+            "${RELEASE_TAG}: manually armed N4D4F64 DO1~64 output test on two boards, FC05/06 write echo and real DO readback, strict single-active channel" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -101,9 +103,9 @@ jobs:
             "1. Keep existing HMI app installed; do not clear its data." \
             "2. Update from the HMI UI: Search update -> Download verified APK -> Approve Android installer." \
             "3. Android installation approval is required. If Google Play Protect says Harmful app blocked, CANCEL installation; do not disable protection." \
-            "4. N4D4F64 ID 1/2 COM5 FC03 read only; actual HMI data reply not yet verified. Output writes are blocked." \
-            "5. Check with the equipment administrator before testing with live outputs." \
-            "6. An Android HMI installation and Play Protect clearance have not been verified." \
+            "4. N4D4F64 FC03 read/FC05-06 output commissioning: two boards, single active DO globally, manual 60s arm, 0.5s guard and readback." \
+            "5. Motor forward/reverse pairings and limit-switch wiring are NOT verified. Test isolated channels only; hardware emergency stop mandatory." \
+            "6. An Android HMI installation, live output safety and Play Protect clearance have not been verified." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
           unzip -t "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip"
