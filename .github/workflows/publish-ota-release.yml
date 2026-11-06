@@ -119,7 +119,8 @@ jobs:
             "V5.02: green CRC-verified PLC dashboard statuses, latched red emergency stop and developer 박동수 in the header" \
             "V5.03: greenhouse ON/OFF buttons show PLC-received green ON or blue OFF with redundant status line removed" \
             "V5.04: motor OPEN STOP CLOSE button full-background colors from received PLC states" \
-            "${RELEASE_TAG}: HTTPS phone monitoring and guarded remote DO/motor commands; 6-digit local pairing, 2-hour session, AndroidKeyStore TLS, 128DO real CRC readback, no automatic remote activation" \
+            "V5.05: HTTPS phone monitor/control support with one-time pairing, TLS and guarded shared PLC output queue" \
+            "${RELEASE_TAG}: HMI phone-access buttons show current actual server monitor/control/stopped mode in full-width green/blue/brown backgrounds; remove erroneous fixed monitor primary highlight" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -150,6 +151,7 @@ jobs:
             "7c. HMI must separately activate on-site Manual Operation for remote DO or motor writes. Existing shared PLC command queue and reverse-direction interlocks are mandatory." \
             "7d. Remote Emergency is a software request only. No guaranteed fail-safe stop without hardwired safety circuit. Phone connection/TLS trust and live PLC actions are NOT hardware-verified." \
             "7e. Do NOT port-forward TCP 18443 to the public Internet. Disable Phone Access at HMI after use; remote access does NOT start automatically on reboot." \
+            "7f. V5.06: Phone Access buttons show only the HTTPS gateway-confirmed active mode. A site-unreachable error still needs real IP, Wi-Fi, port and TLS checks; mode color alone does not confirm phone connectivity." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
