@@ -209,7 +209,7 @@ function plcBoardCountChanged(){
 function armDoTest(){
  var msg=el('plcArmStatus');
  if(!el('plcSafetyAck').checked){msg.textContent='먼저 현장 안전 및 결선을 확인한 뒤 체크하세요.';return;}
- if(!window.confirm('PLC 실제 출력을 시험 모드로 활성화할까요?\\n정·역 모터와 리미트 결선이 미확인된 채널은 절대 ON하지 마세요.'))return;
+ if(el('plcTestMode').value!=='bench'&&!window.confirm('PLC 실제 출력을 시험 모드로 활성화할까요?\\n정·역 모터와 리미트 결선이 미확인된 채널은 절대 ON하지 마세요.'))return;
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.armManualOutputs){msg.textContent='지원하지 않는 APK입니다.';return;}
  plcArmed=false;plcArmDeadline=0;
  msg.textContent='PLC ID 1'+(selectedPlcCount()===2?'·2':'')+' 실제 수신/안전 설정 재검사 중 · 아직 승인되지 않음';
