@@ -84,6 +84,7 @@ jobs:
             "V4.88: removed automatic update downloads; warning unresolved" \
             "${RELEASE_TAG}: legacy JS compatibility, visible UI error diagnostics, and APK export without in-app installer" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
+          printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
             "ENERGYBLUE IXP101H1 HMI ${RELEASE_TAG}" \
             "1. Keep existing HMI app installed; do not clear its data." \
@@ -95,6 +96,12 @@ jobs:
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
           unzip -t "dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip"
+      - name: Archive distribution ZIP as Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ENERGYBLUE-HMI-SIGNED-ZIP
+          path: dist/ENERGYBLUE_HMI_v4.89.zip
+          retention-days: 30
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,4 +112,4 @@ jobs:
             echo "::error::Release $RELEASE_TAG already exists; refuse replacement"
             exit 1
           fi
-          gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "ENERGYBLUE HMI $RELEASE_TAG" --notes "IXP101H1 Android HMI update; SHA-256 attached; Android installation approval required."
+          gh release create "$RELEASE_TAG" dist/* --title "ENERGYBLUE HMI $RELEASE_TAG" --notes "IXP101H1 HMI source commit: $GITHUB_SHA (branch: $GITHUB_REF_NAME). SHA-256 attached. Play Protect status not verified. Install only after security review."
