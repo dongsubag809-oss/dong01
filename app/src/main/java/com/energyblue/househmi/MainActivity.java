@@ -151,8 +151,8 @@ public final class MainActivity extends Activity {
     obj.put("result",file.exists()?"장치 파일 확인됨 (RS485 통신 미검증)":"장치 파일 없음");return obj.toString();
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
-  @JavascriptInterface public String openCom5(String path,int baud){invalidateReads();return SerialPort.open(path,baud)+" | PLC ID 1,2 유지 | 출력은 시험 승인 후에만 가능";}
-  @JavascriptInterface public String closeCom5(){invalidateReads();SerialPort.close();return "COM5 닫힘";}
+  @JavascriptInterface public String openCom5(String path,int baud){if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";invalidateReads();return SerialPort.open(path,baud)+" | PLC ID 1,2 유지 | 출력은 시험 승인 후에만 가능";}
+  @JavascriptInterface public String closeCom5(){if(plcBusy.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";invalidateReads();SerialPort.close();return "COM5 닫힘";}
   /** Read two N4D4F64 boards using verified legacy FC03 addresses. */
   @JavascriptInterface public void readPlc(String mode1,String mode2){
    if(!"default".equals(mode1)&&!"m0_short".equals(mode1)){emit("plc","{\"id\":1,\"status\":\"ERROR\",\"message\":\"ID1 M0 모드 선택 오류\"}");return;}
@@ -239,7 +239,8 @@ public final class MainActivity extends Activity {
       if(!ModbusReadOnly.safetyConfigAllowsManual(slave))
        throw new java.io.IOException("원격 연동 설정 변경 감지, ON 명령 취소");
      }
-     if(!armedAndFresh(slave,shorted))throw new java.io.IOException("출력 전 승인 만료");
+     if(Thread.currentThread().isInterrupted()||!armedAndFresh(slave,shorted))
+      throw new java.io.IOException("출력 전 승인 만료/통신 작업 중단");
      commandSent=true;
      ModbusOutput.writeOnce(slave,shorted,channel,on);
      int[] addrs=ModbusReadOnly.addresses(shorted);
