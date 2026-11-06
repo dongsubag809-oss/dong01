@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.Looper;
 import androidx.core.content.FileProvider;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.File;
 import java.net.NetworkInterface;
 import java.net.InetAddress;
@@ -31,6 +32,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MainActivity extends Activity {
  private WebView browser;
  private LanDiscovery discovery;
+ private RemoteGateway remoteGateway;
+ private final String[] remoteDoReadback=new String[2];
+ private final String[] remoteDiReadback=new String[2];
+ private final boolean[] remoteLink={false,false};
+ private final long[] remoteLastSeen={0L,0L};
+ private volatile JSONArray remoteHouseNames=null;
+ private volatile JSONArray remoteOutputNames=null;
  private final ExecutorService plcWorker=Executors.newSingleThreadExecutor();
  private final AtomicBoolean plcBusy=new AtomicBoolean(false);
  private final AtomicBoolean outputCommandPending=new AtomicBoolean(false);
@@ -83,6 +91,11 @@ public final class MainActivity extends Activity {
   synchronized(plcGuard){return new boolean[]{lastM0Shorted[0],lastM0Shorted[1]};}
  }
  private void notifyBoard(int id,boolean shorted,boolean[] di,boolean[] dout)throws Exception{
+  synchronized(plcGuard){
+   remoteDoReadback[id-1]=bits(dout);
+   remoteDiReadback[id-1]=bits(di);
+   remoteLastSeen[id-1]=System.currentTimeMillis();
+  }
   JSONObject obj=new JSONObject();
   obj.put("id",id).put("status","OK")
    .put("di",bits(di)).put("do",bits(dout))
@@ -135,6 +148,10 @@ public final class MainActivity extends Activity {
  }
  private boolean autoM0(int id){return plcPreferences().getBoolean("m0_id"+id,false);}
  private void sendLink(int id,boolean online,String reason){
+  synchronized(plcGuard){
+   remoteLink[id-1]=online;
+   if(!online){remoteDoReadback[id-1]=null;remoteDiReadback[id-1]=null;}
+  }
   try {
    JSONObject o=new JSONObject().put("id",id).put("connected",online)
      .put("detail",reason==null?"":reason);
@@ -239,6 +256,77 @@ public final class MainActivity extends Activity {
   emit("emergency",(allVerified?"PLC 양쪽 DO OFF 실수신 확인. ":"비상정지 요청 · 일부 PLC의 실제 DO OFF 미확인. ")+report+
     "비상정지 잠금 유지 · 외부 하드웨어 정지 상태 확인 필요");
  }
+ private JSONObject remoteState()throws Exception{
+  JSONObject state=new JSONObject(),boards=new JSONObject();
+  synchronized(plcGuard){
+   for(int i=0;i<2;i++){
+    boolean recent=System.currentTimeMillis()-remoteLastSeen[i]<20000L;
+    boolean verified=remoteLink[i]&&recent&&remoteDoReadback[i]!=null&&remoteDiReadback[i]!=null;
+    JSONObject board=new JSONObject();
+    board.put("connected",verified);
+    board.put("do",verified?remoteDoReadback[i]:JSONObject.NULL);
+    board.put("di",verified?remoteDiReadback[i]:JSONObject.NULL);
+    board.put("lastSeen",remoteLastSeen[i]);
+    boards.put(Integer.toString(i+1),board);
+   }
+   state.put("manualEnabled",outputArmUntil==-1);
+   state.put("activeBoards",activeBoardCount);
+  }
+  state.put("boards",boards);
+  state.put("emergency",emergencyLatched.get());
+  state.put("timestamp",System.currentTimeMillis());
+  if(remoteHouseNames!=null)state.put("houseNames",remoteHouseNames);
+  if(remoteOutputNames!=null)state.put("outputNames",remoteOutputNames);
+  return state;
+ }
+ private boolean remoteMayWrite(){
+  synchronized(plcGuard){
+   if(outputArmUntil!=-1||emergencyLatched.get()||destroyed)return false;
+   for(int id=0;id<activeBoardCount;id++){
+    if(!remoteLink[id]||remoteDoReadback[id]==null||
+       System.currentTimeMillis()-remoteLastSeen[id]>20000L)return false;
+   }
+   return true;
+  }
+ }
+ private String remoteControlCommand(JSONObject payload){
+  String type=payload.optString("type","");
+  if("emergency".equals(type)){
+   new NativeDiagnostics().emergencyStop();
+   return "비상정지 수신 · HMI에서 PLC ID1/ID2 실제 OFF 재조회 중 (정지 완료가 아님)";
+  }
+  if(!remoteMayWrite())return "DENIED · HMI 수동 운전 승인·PLC 연결 확인 필요";
+  int house=payload.optInt("house",-1),slot=payload.optInt("slot",-1);
+  if(house<1||house>5||slot<0||slot>23)return "DENIED · 하우스/DO 주소 범위 오류";
+  int absolute=(house-1)*24+slot,id=absolute/64+1,ch=absolute%64+1;
+  if(id>activeBoards())return "DENIED · PLC ID 미연결";
+  String mode=autoM0(id)?"m0_short":"default";
+  NativeDiagnostics nativeIo=new NativeDiagnostics();
+  if("output".equals(type)){
+   if((slot>=4&&slot<=19)||!payload.has("on")||
+      !(payload.opt("on") instanceof Boolean))
+    return "DENIED · 모터 정역 채널은 3버튼 명령만 허용";
+   nativeIo.setDoOutput(id,ch,payload.optBoolean("on"),mode);
+   return "명령 접수 · ID "+id+" DO"+ch+" · 실제 수신 상태로 확인 필요";
+  }
+  if("motor".equals(type)){
+   if(slot<4||slot>18||slot%2!=0)return "DENIED · 모터 정역 쌍 주소 오류";
+   int direction=payload.optInt("direction",99);
+   if(direction!=-1&&direction!=0&&direction!=1)return "DENIED · 방향 명령 오류";
+   int nextAbsolute=absolute+1;
+   if(nextAbsolute/64!=absolute/64)return "DENIED · 정역 쌍이 다른 PLC";
+   nativeIo.motorCommand(id,ch,ch+1,direction,mode);
+   return "모터 명령 접수 · ID "+id+" DO"+ch+"/"+(ch+1)+" · 결과는 PLC 재수신 확인 필요";
+  }
+  return "DENIED · 허용되지 않은 원격 명령";
+ }
+ private RemoteGateway createRemoteGateway(){
+  return new RemoteGateway(this,new RemoteGateway.Controller(){
+   @Override public JSONObject status()throws Exception{return remoteState();}
+   @Override public String command(JSONObject request){return remoteControlCommand(request);}
+   @Override public boolean locallyAllowed(){return remoteMayWrite();}
+  });
+ }
  private volatile boolean destroyed = false;
  @Override public void onCreate(Bundle b) { super.onCreate(b);
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
@@ -285,7 +373,7 @@ public final class MainActivity extends Activity {
   if(updater!=null&&updater.onExportResult(requestCode,resultCode,data))return;
   super.onActivityResult(requestCode,resultCode,data);
  }
- @Override protected void onDestroy(){plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
+ @Override protected void onDestroy(){if(remoteGateway!=null)remoteGateway.close();plcAutoPaused=true;ui.removeCallbacks(plcAutoPoll);invalidateReads();destroyed=true;plcWorker.shutdownNow();new Thread(()->SerialPort.close(),"COM5-async-close").start();if(discovery!=null)discovery.close();if(updater!=null)updater.close();if(browser!=null){browser.destroy();browser=null;}super.onDestroy();}
  private static String bits(boolean[] values){
   StringBuilder out=new StringBuilder(64);
   for(boolean v:values)out.append(v?'1':'0');
@@ -618,6 +706,36 @@ public final class MainActivity extends Activity {
    return "비상정지 잠금 해제 · 자동 출력 재시작 없음 · 현장 안전 확인 필요";
   }
   @JavascriptInterface public boolean isEmergencyLatched(){return emergencyLatched.get();}
+  @JavascriptInterface public String startPhoneGateway(boolean controls){
+   if(destroyed)return "{\"error\":\"HMI 종료\"}";
+   try{
+    if(remoteGateway==null)remoteGateway=createRemoteGateway();
+    return remoteGateway.enable(controls).toString();
+   }catch(Exception ex){return "원격 HTTPS 시작 실패: "+ex.getClass().getSimpleName();}
+  }
+  @JavascriptInterface public String phoneGatewayInfo(){
+   try{
+    return remoteGateway==null?"{\"enabled\":false}":remoteGateway.information().toString();
+   }catch(Exception ex){return "{\"enabled\":false}";}
+  }
+  @JavascriptInterface public String setPhoneControl(boolean control){
+   if(remoteGateway==null||!remoteGateway.isRunning())return "HMI 원격 HTTPS 서버가 실행 중이지 않습니다.";
+   remoteGateway.setControls(control);
+   try{return remoteGateway.information().toString();}catch(Exception ex){return "원격 권한 변경 오류";}
+  }
+  @JavascriptInterface public String stopPhoneGateway(){
+   if(remoteGateway!=null)remoteGateway.close();
+   return "휴대폰 HTTPS 접속 종료 · 기존 인증 세션 해제";
+  }
+  @JavascriptInterface public void syncPhoneNames(String raw){
+   if(raw==null||raw.length()>15000)return;
+   try{
+    JSONObject obj=new JSONObject(raw);
+    JSONArray houses=obj.getJSONArray("houses"),outputs=obj.getJSONArray("outputs");
+    if(houses.length()!=5||outputs.length()!=128)return;
+    remoteHouseNames=houses;remoteOutputNames=outputs;
+   }catch(Exception ignored){}
+  }
   @JavascriptInterface public String getIp(){return localIp();}
   @JavascriptInterface public String getAppVersion(){return BuildConfig.VERSION_NAME;}
   @JavascriptInterface public void checkUpdate(){updater.check();}
