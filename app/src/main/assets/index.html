@@ -270,18 +270,16 @@ function renderMappedHouse(){
 function manualMappedOutput(h,slot,on){
  var a=assignedOutput(h,slot),log=el('plcReadLog');
  if(!a)return;
- if(el('plcTestMode').value==='bench'){
-  log.textContent='하우스별 모터 제어는 무부하 다채널 시험에서는 차단합니다. 일반 단일출력 모드로 전환하세요.';
-  return;
- }
+ // Isolated/no-load commissioning may test all mapped 120 DO independently.
+ // No equipment may be attached when this selector is active.
  if(!plcLinks[a.id]||!plcDoStates[a.id]||a.id>selectedPlcCount()){
   log.textContent=doAddress(a.id,a.ch)+' 미연결 또는 수동제어 대상 아님';return;
  }
  if(!plcArmed||(plcArmDeadline>0&&Date.now()>plcArmDeadline)){
-  log.textContent='출력 잠금: I/O 메뉴에서 안전 확인 후 일반 단일출력 시험을 활성화하세요.';return;
+  log.textContent='출력 잠금: I/O 메뉴에서 시험 종류 선택 후 안전 확인 → 시험 시작(ARM_OK)이 필요합니다.';return;
  }
  if(plcCommandBusy){log.textContent='다른 PLC 명령 처리 중';return;}
- if(on&&slot>=4&&slot<20){
+ if(el('plcTestMode').value!=='bench'&&on&&slot>=4&&slot<20){
   var peer=assignedOutput(h,slot%2===0?slot+1:slot-1);
   var pb=plcDoStates[peer.id];
   if(!pb||pb.charAt(peer.ch-1)==='1'){
