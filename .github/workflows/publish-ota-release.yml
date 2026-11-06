@@ -112,7 +112,8 @@ jobs:
             "V4.97: automatic COM5 ID1/ID2 link-state monitoring and actual 128-channel raw I/O console" \
             "V4.98: historical 24DO per house mapping across 120 channels and 8 spare, editable Korean output names" \
             "V4.99: include verified 128-channel CSV and independent no-load greenhouse/manual DO tests" \
-            "${RELEASE_TAG}: fix static manual Output Locked display; inline no-load arm on greenhouse page, queue behind COM5 auto polling, show ARM_OK and actual DO write results" \
+            "V5.00: manual output activation indicator and queued COM5 arming" \
+            "${RELEASE_TAG}: production-only HMI; remove no-load/virtual test UI; vertical motor OPEN STOP CLOSE; native forward/reverse interlock with 0.5s delay and real DO readback; 128 editable DO labels preserved" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -124,13 +125,14 @@ jobs:
             "4. On app startup COM5 opens automatically (last confirmed path and baud, default /dev/ttyS5 9600). PLC ID1 and ID2 are polled separately; offline stays disconnected." \
             "4d. Both ID1 and ID2 offer DI/DO01-64 received state and per-channel controls on the Manual page. No automatic DO command is sent on app startup or reconnect." \
             "4b. If a second PLC is physically connected later, select 2-board mode and read ID1+ID2. Do not select 2-board mode with only ID1 present." \
-            "4a. Choose ordinary single-output mode for actual equipment tests, or no-load multi-output mode only when all outputs on the selected PLC boards are physically disconnected from equipment." \
-            "4c. Bench mode for physically disconnected loads can independently control all 64 DO channels per connected PLC ID1/ID2 without per-button popups. Manual arming has no 60-second timer; CRC, remote-link checks and readback remain active." \
+            "4a. PLC ID1/ID2 connection state is checked automatically; enable manual operation only after verifying field wiring, limit contacts and hardware emergency stop." \
+            "4c. Each unrelated DO may be operated independently; verified historical motor pairs cannot be energized in opposite directions together. Manual arm has no 60-second timer; no output auto-starts on reconnect." \
             "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
             "5a. Actual address plan is in DO_MAP_128.csv: houses 1-5 use 24 DO each in order, ID2 DO57-64 are spare. This is a logical plan, NOT verified physical wiring." \
             "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
-            "5c. V5.00 manual page: tick physically no-load checkbox -> click Start no-load test -> confirm ARM_OK status -> ON/OFF DO by house/number. Lock test after use." \
-            "5d. The manual page shows actual PLC CRC/DO receive values. If ARM_OK is missing, source gives the Modbus/safety reason; no auto-output on reconnection." \
+            "5c. V5.01 manual page: activate Manual Operation after confirming physical wiring and hardwired emergency stop; operate motor with OPEN / STOP / CLOSE buttons and lamps, fans or irrigation with ON/OFF." \
+            "5d. Direction change: opposite DO OFF/CRC/readback, 0.5 second delay and new DO ON/readback. STOP commands OFF to both outputs, but DOES NOT replace hardwired emergency-stop or limit-switch protection." \
+            "5e. No simulation, no load-disconnected test controls. DI limit addresses and physical channel wiring remain unverified; do not energize field motors before site verification." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
