@@ -43,7 +43,6 @@ public final class MainActivity extends Activity {
  // Off by default on every app launch; armed only for explicit no-load bench commissioning.
  private boolean noLoadMultiOutput=false;
  private long outputArmUntil=0;
- private static final long OUTPUT_ARM_MS=60000L;
  private void markRead(int id,boolean shorted){
   synchronized(plcGuard){
    lastGoodRead[id-1]=android.os.SystemClock.elapsedRealtime();
@@ -72,11 +71,10 @@ public final class MainActivity extends Activity {
  }
  private boolean armedAndFresh(int id,boolean shorted){
   synchronized(plcGuard){
-   long now=android.os.SystemClock.elapsedRealtime();
-   // Arming has verified only physically connected boards. Every write
-   // rechecks all active outputs and safety registers before transmission.
+   // A manually armed commissioning session does not expire after 60 seconds.
+   // It is revoked by disarm, communication failure, board selection or app exit.
    int count=activeBoardCount;
-   return id>=1&&id<=count&&(outputArmUntil>now||(outputArmUntil==-1&&noLoadMultiOutput))
+   return id>=1&&id<=count&&outputArmUntil==-1
      && lastGoodRead[0]>0&&(count==1||lastGoodRead[1]>0)
      && lastM0Shorted[id-1]==shorted;
   }
@@ -307,7 +305,7 @@ public final class MainActivity extends Activity {
    });
   }
   /** Fresh read and safety validation before enabling any output, count 1 or 2.
-   * Output arming expires after 60 seconds and resets on failure.
+   * Output arming persists within current session and resets on failure.
    */
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
    // No-load bench tests may target 1 or 2 physically present boards.
@@ -340,12 +338,12 @@ public final class MainActivity extends Activity {
      synchronized(plcGuard){
       if(armingTicket!=armSequence||destroyed)
        throw new java.io.IOException("사용자가 시험 승인을 취소했거나 COM5 상태가 변경되었습니다");
-      outputArmUntil=noLoadBench?-1:android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
+      outputArmUntil=-1;
       noLoadMultiOutput=noLoadBench;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+
        (noLoadBench?" · 무부하 다채널 시험(다른 DO ON 허용)":" · 단일 DO 시험(동시 ON 차단)")+
-       (noLoadBench?" · 세션 종료/시험 잠금까지 유효":" · 60초 유효");
+       " · 시험 잠금/통신 장애/앱 종료 시까지 유효";
     }catch(Exception ex){
      synchronized(plcGuard){outputArmUntil=0;noLoadMultiOutput=false;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
      outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
