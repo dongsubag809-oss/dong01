@@ -181,6 +181,41 @@ function el(id){return document.getElementById(id)}
 function show(id){var pages=document.getElementsByClassName('page'),found=false,i;for(i=0;i<pages.length;i++){if(pages[i].id===id)found=true;pages[i].classList.toggle('active',pages[i].id===id)}var buttons=document.querySelectorAll('nav button');for(i=0;i<buttons.length;i++)buttons[i].classList.toggle('active',buttons[i].getAttribute('data-page')===id);var main=document.querySelector('main');if(main)main.scrollTop=0;if(!found){var o=document.getElementById('out');if(o)o.textContent='메뉴 페이지를 찾지 못했습니다: '+id}}
 function houseSvg(){return '<svg viewBox="0 0 160 90" aria-hidden="true"><path d="M10 73 L10 40 Q80 -20 150 40 L150 73 Z" fill="#21495a" stroke="#83c9dd" stroke-width="3"/><path d="M25 73 L25 41 Q80 0 135 41 L135 73" fill="none" stroke="#70aabd" stroke-width="2"/><path d="M80 13 V73 M10 42 H150 M10 74 H150" stroke="#70aabd" stroke-width="2"/><path d="M33 66 Q44 47 55 66 M60 66 Q71 47 82 66 M87 66 Q98 47 109 66 M112 66 Q123 47 134 66" fill="none" stroke="#74b585" stroke-width="4"/></svg>'}
 var controlItems=['내측 창문 좌측','내측 창문 우측','외측 창문 좌측','외측 창문 우측','그늘막 좌측','그늘막 우측','천장 창문 좌측','천장 창문 우측','환풍기 1','환풍기 2','바닥 환풍기','조명 1','조명 2','열풍기','관수 밸브'];
+/* Verified historical 5-house design from do120_control.py:
+ * each house occupies 24 consecutive logical DO channels on N4D4F64 ID1, ID2.
+ * This is a DESIGN allocation, not proof that physical cables match.
+ * No DI addresses are invented. 8 remaining outputs are spare.
+ */
+var mappedOutputs=[
+ '조명 1','조명 2','환풍기 1','환풍기 2',
+ '좌측 그늘막 열림','좌측 그늘막 닫힘',
+ '우측 그늘막 열림','우측 그늘막 닫힘',
+ '내측창 좌측 열림','내측창 좌측 닫힘',
+ '내측창 우측 열림','내측창 우측 닫힘',
+ '외측창 좌측 하단 열림','외측창 좌측 하단 닫힘',
+ '외측창 좌측 상단 열림','외측창 좌측 상단 닫힘',
+ '외측창 우측 열림','외측창 우측 닫힘',
+ '천창 열림','천창 닫힘',
+ '바닥 환풍기','열풍기','관수 1','관수 2'
+];
+function assignedOutput(h,index){
+ var absolute=(h-1)*24+index;
+ if(h<1||h>5||index<0||index>=24)return null;
+ return {id:Math.floor(absolute/64)+1,ch:absolute%64+1,house:h,slot:index};
+}
+function defaultDoName(id,ch){
+ var n=(id-1)*64+ch-1;
+ if(id<1||id>2||ch<1||ch>64)return '';
+ if(n>=120)return '예비 출력 '+(n-119);
+ return (Math.floor(n/24)+1)+'동 '+mappedOutputs[n%24];
+}
+function assignedDoName(id,ch){
+ return doRegistry[id+'-'+ch]||defaultDoName(id,ch);
+}
+var legacyControlSlots=[
+ [8,9],[10,11],[12,13],[16,17],[4,5],[6,7],[18,19],null,
+ [2],[3],[20],[0],[1],[21],[22,23]
+];
 var contactNames={};try{var c=JSON.parse(localStorage.getItem("eb-contact-names"));if(c&&typeof c==="object"&&!Array.isArray(c))contactNames=c}catch(e){}
 function contactName(h,i){var a=contactNames[String(h)];return a&&typeof a[i]==="string"&&a[i].trim()?a[i]:controlItems[i]}
 function doLabel(h,i){return "DO 결선 미배정 · "+h+"동 접점 "+(i+1)}
