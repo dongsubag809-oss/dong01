@@ -106,7 +106,8 @@ jobs:
             "V4.93: minimum installer permission aligned with V4.90, Android 7 OTA maintained" \
             "V4.94: live CRC and R245/R246/R248/R250 scan on DO arming, no 10s pre-approval delay" \
             "V4.95: single N4D4F64 board ID1 default, ID2 not polled, optional 2-board mode" \
-            "${RELEASE_TAG}: isolated ID1 bench control mode, independent channel toggles, no 60s bench limit; ordinary mode unchanged" \
+            "V4.96: isolated ID1 bench control with independent DO01-64 and session-only manual arm" \
+            "${RELEASE_TAG}: COM5 auto-connect and reconnect, independent ID1/ID2 real DI/DO status, 128-channel manual I/O console; unassigned greenhouse controls remain locked" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -115,11 +116,13 @@ jobs:
             "2. Android 7 HMI: Search -> Download and verify SHA-256 -> User approves normal Android installer." \
             "2a. Android 8+: Export verified APK to user folder then open in file manager; no installer privilege requested." \
             "3. Android installation approval is required. If Google Play Protect says Harmful app blocked, CANCEL installation; do not disable protection." \
-            "4. Current setup: one PLC board only at ID1. Select 1 board (default), COM5 OPEN_OK, read ID1, arm outputs (rechecks only ID1), test isolated DO." \
+            "4. On app startup COM5 opens automatically (last confirmed path and baud, default /dev/ttyS5 9600). PLC ID1 and ID2 are polled separately; offline stays disconnected." \
+            "4d. Both ID1 and ID2 offer DI/DO01-64 received state and per-channel controls on the Manual page. No automatic DO command is sent on app startup or reconnect." \
             "4b. If a second PLC is physically connected later, select 2-board mode and read ID1+ID2. Do not select 2-board mode with only ID1 present." \
             "4a. Choose Single-channel mode for ordinary testing, or disconnected-load bench mode only when all loads are physically disconnected from ID1 outputs." \
             "4c. Bench mode is session-only with no 60-second timer and permits independently changing DO01-64. CRC, safety configuration, and actual readback remain active." \
-            "5. Motor forward/reverse pairings and limit-switch wiring are NOT verified. Test isolated channels only; hardware emergency stop mandatory." \
+            "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
+            "5a. Raw DO manual outputs use the existing V4.96 confirmation and bench arming requirements. Never connect loads with the bench mode active." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
