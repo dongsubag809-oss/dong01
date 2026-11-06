@@ -188,15 +188,47 @@ public final class MainActivity extends Activity {
   /** Arming requires fresh CRC-checked DI/DO reads from BOTH real PLC boards.
    * Automatically expires after 60 seconds and is discarded on any read/write failure.
    */
-  @JavascriptInterface public String armManualOutputs(){
-   synchronized(plcGuard){
-    long now=android.os.SystemClock.elapsedRealtime();
-    if(plcBusy.get()||lastGoodRead[0]==0||lastGoodRead[1]==0||
-       now-lastGoodRead[0]>READ_FRESH_MS||now-lastGoodRead[1]>READ_FRESH_MS)
-     return "승인 실패: PLC ID 1·2를 다시 읽고 10초 안에 승인해 주세요.";
-    outputArmUntil=now+OUTPUT_ARM_MS;
-    return "ARM_OK · 60초 수동 단일 DO 시험 활성화 · 출력 전 확인창 표시";
+  /** Manual arming performs fresh CRC-checked reads of BOTH boards.
+   * The user may spend longer than ten seconds examining the display before
+   * pressing Activate; countdown starts only after fresh scans succeed.
+   */
+  @JavascriptInterface public void armManualOutputs(String mode1,String mode2){
+   if(!("default".equals(mode1)||"m0_short".equals(mode1))||
+      !("default".equals(mode2)||"m0_short".equals(mode2))){
+    emit("plcArm","수동 출력 승인 실패: 두 PLC의 M0 모드를 선택해 주세요.");return;
    }
+   if(!plcBusy.compareAndSet(false,true)){
+    emit("plcArm","수동 출력 승인 대기 실패: COM5 읽기/쓰기 중입니다. 작업 완료 후 다시 눌러 주세요.");return;
+   }
+   final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
+   emit("plcArm","PLC ID 1·2를 새로 읽고 출력 연동 설정 확인 중입니다. 아직 출력 승인이 아닙니다.");
+   plcWorker.execute(()->{
+    String outcome;
+    try{
+     if(destroyed||Thread.currentThread().isInterrupted())throw new java.io.IOException("통신 작업 중단");
+     for(int id=1;id<=2;id++){
+      int[] addresses=ModbusReadOnly.addresses(modes[id-1]);
+      boolean[] dout=ModbusReadOnly.read64(id,addresses[0]);
+      boolean[] di=ModbusReadOnly.read64(id,addresses[1]);
+      String block=ModbusReadOnly.safetyProblem(id);
+      if(block!=null)throw new java.io.IOException(block);
+      markRead(id,modes[id-1]);
+      notifyBoard(id,modes[id-1],di,dout);
+     }
+     synchronized(plcGuard){
+      outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
+     }
+     outcome="ARM_OK · PLC ID 1·2 CRC/출력연동 확인 · 지금부터 60초 동안 단일 DO 시험 허용";
+    }catch(Exception ex){
+     synchronized(plcGuard){
+      outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;
+     }
+     outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
+    }finally{
+     plcBusy.set(false);
+    }
+    emit("plcArm",outcome);
+   });
   }
   @JavascriptInterface public String disarmManualOutputs(){
    synchronized(plcGuard){outputArmUntil=0;}
@@ -223,8 +255,8 @@ public final class MainActivity extends Activity {
      writeStatus(slave,channel,"WORKING","ID "+slave+" DO"+channel+" 최신 상태·안전 레지스터 점검 중");
      boolean[][] states=scanBothBoards(modes);
      // Existing verified Python worker checks these exact remote/relationship registers.
-     if(!ModbusReadOnly.safetyConfigAllowsManual(slave))
-      throw new java.io.IOException("원격 출력 연동/관계 레지스터가 활성화되어 수동 명령 금지");
+     String guard=ModbusReadOnly.safetyProblem(slave);
+     if(guard!=null)throw new java.io.IOException(guard);
      boolean current=states[slave-1][channel-1];
      if(current==on){
       writeStatus(slave,channel,"UNCHANGED","PLC 실수신이 이미 "+(on?"ON":"OFF")+" 상태입니다.");
@@ -240,8 +272,8 @@ public final class MainActivity extends Activity {
       states=scanBothBoards(modes);
       if(otherOutputActive(states,slave,channel))
        throw new java.io.IOException("재확인에서 다른 DO ON 감지, ON 명령 취소");
-      if(!ModbusReadOnly.safetyConfigAllowsManual(slave))
-       throw new java.io.IOException("원격 연동 설정 변경 감지, ON 명령 취소");
+      guard=ModbusReadOnly.safetyProblem(slave);
+      if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
      }
      if(Thread.currentThread().isInterrupted()||!armedAndFresh(slave,shorted))
       throw new java.io.IOException("출력 전 승인 만료/통신 작업 중단");
