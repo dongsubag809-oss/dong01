@@ -232,7 +232,7 @@ function tapDo(id,ch){
  var label=on?'ON · 실제 출력 구동':'OFF · 출력 정지';
  var notice='PLC ID '+id+' DO'+('0'+ch).slice(-2)+' '+label+
   '\\n이 채널에 연결된 장비가 움직일 수 있습니다. 실제 명령을 송신합니까?';
- if(!window.confirm(notice))return;
+ if(el('plcTestMode').value!=='bench'&&!window.confirm(notice))return;
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.setDoOutput){msg.textContent='출력 통신 기능이 없는 버전';return;}
  plcCommandBusy=true;
  msg.textContent='ID '+id+' DO'+ch+' '+label+' · PLC 응답 대기, 버튼 연타 금지';
