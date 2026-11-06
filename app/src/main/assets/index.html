@@ -44,6 +44,15 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 .kb-actions button{flex:1}
 .kb-on{background:#287e9a!important;border-color:#8eeaff!important}
 @media(max-height:500px){.kb-keys button{min-height:36px}.kb-panel{padding:8px}}
+
+.plc-read-panel{margin-top:12px;padding:10px;border:1px solid #456b7d;border-radius:10px;background:#0d2432}
+.plc-board{margin-top:12px;border:1px solid #3e6678;padding:10px;border-radius:9px}
+.plc-board h3{margin:3px 0 8px}
+.plc-ch-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
+.plc-ch{font-size:12px;padding:7px 2px;text-align:center;border:1px solid #355568;border-radius:6px;background:#153142}
+.plc-ch.on{background:#25704c;color:#fff;border-color:#8be6b1}
+.plc-ch.off{color:#b5c7d1}
+@media(max-width:730px){.plc-ch-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 </style></head>
 <body><div id="hmiFault" role="status" style="display:none;position:fixed;z-index:99998;bottom:5px;left:6px;right:6px;padding:7px;background:#651b1b;color:#fff;font-size:13px;max-height:75px;overflow:auto;border:1px solid #ff8a8a"></div><script>window.onerror=function(msg,src,line,col){var box=document.getElementById("hmiFault");if(box){box.style.display="block";box.textContent="HMI 화면 오류: "+msg+" (행 "+line+")";}return false;};</script><header><div><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · 가로 터치 HMI · PLC 실제 제어 미연결</div></div><div class="status">● 출력 안전 잠금 <span id="clock"></span><br><span class="sub">HMI V<span id="version">확인 중</span> · IP <span id="ip">확인 중</span></span></div></header>
 <div class="shell"><nav>
@@ -64,7 +73,16 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 <section id="schedule" class="page"><h2>예약 운전 스케줄</h2><p class="muted">동별 스케줄 등록 및 시간 중복 처리 기능은 PLC 제어 로직 통합 시 연결됩니다.</p><table><thead><tr><th>예약 항목</th><th>적용 대상</th><th>상태</th></tr></thead><tbody id="schedules"></tbody></table></section>
 <section id="env" class="page"><h2>환경 모니터링</h2><div class="tiles" id="sensors"></div><div class="panel" style="margin-top:12px"><h3>센서 통신</h3><p>COM6 · 온습도·토양 센서 RS-485 예정</p><p class="warn">실측 통신 전까지 온도·습도·토양 값은 ‘미수신’으로만 표시합니다.</p></div></section>
 <section id="nutrient" class="page"><h2>양액·관수</h2><div class="grid2"><div class="panel"><h3>공통 양액 혼합 장치</h3><table><tr><td>A 원액</td><td>미연결</td></tr><tr><td>B 원액</td><td>미연결</td></tr><tr><td>C 원액</td><td>미연결</td></tr><tr><td>D 물</td><td>미연결</td></tr></table></div><div class="panel"><h3>5동 관수 밸브 상태</h3><table id="valves"></table><p class="warn">밸브-펌프 연동 및 유량 안전조건 검증 전까지 명령 전송을 차단합니다.</p></div></div></section>
-<section id="io" class="page"><h2>I/O 및 통신 진단</h2><div class="grid2"><div class="panel"><h3>PLC / 센서 연결 정보</h3><p>COM5: PLC Slave ID 1·2</p><p>COM6: 센서 RS-485 예약</p><p>출력: ID 1 DO01~DO64 + ID 2 DO01~DO64 = 총 128DO (장비별 결선표 검증 필요)</p><div class="row"><label>COM5 실제 장치 경로 <input id="com5Path" placeholder="/dev/tty..." style="width:190px" autocomplete="off"></label><label>속도 <select id="com5Baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label></div><div class="row" style="margin:10px 0"><button onclick="openCom5()">COM5 포트 열기</button><button onclick="closeCom5()">포트 닫기</button><button onclick="probe()">장치 경로 확인</button></div><p class="muted">PLC Slave ID 1·2 유지. 실제 포트 경로를 입력해야 하며 주소·명령은 변경하지 않습니다. 8N1 포트 개방만 수행합니다.</p><div class="log" id="out">실제 PLC 제어 명령 잠금</div></div><div class="panel"><h3>안전 기본값</h3><p class="warn">실기기 구동 미허용</p><p>모터 정·역 동시 출력 금지, 0.5초 인터록, DI 리미트 확인, 통신 상실 시 안전정지 등은 PLC 실기 검증 후 승인해야 합니다.</p><p class="muted">표시되는 /dev/ttyS5는 진단용 예시 경로이며 실제 COM5 장치 경로가 확인된 것은 아닙니다.</p></div></div><div class="panel" style="margin-top:12px"><h3>예정 I/O 채널 매핑</h3><table><tr><th>장치 분류</th><th>대상</th><th>상태</th></tr><tr><td>창문 / 그늘막</td><td>5개동 내외측 창문, 좌·우 그늘막</td><td>미배정</td></tr><tr><td>환풍기 / 바닥 환풍기</td><td>동별 송풍</td><td>미배정</td></tr><tr><td>조명 / 열풍기</td><td>동별 제어</td><td>미배정</td></tr><tr><td>관수 / 양액</td><td>공통 혼합기 + 동별 밸브</td><td>미배정</td></tr></table></div></section>
+<section id="io" class="page"><h2>I/O 및 통신 진단</h2><div class="grid2"><div class="panel"><h3>PLC / 센서 연결 정보</h3><p>COM5: PLC Slave ID 1·2</p><p>COM6: 센서 RS-485 예약</p><p>출력: ID 1 DO01~DO64 + ID 2 DO01~DO64 = 총 128DO (장비별 결선표 검증 필요)</p><div class="row"><label>COM5 실제 장치 경로 <input id="com5Path" placeholder="/dev/tty..." value="/dev/ttyS5" style="width:190px" autocomplete="off"></label><label>속도 <select id="com5Baud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>115200</option></select></label></div><div class="row" style="margin:10px 0"><button onclick="openCom5()">COM5 포트 열기</button><button onclick="closeCom5()">포트 닫기</button><button onclick="probe()">장치 경로 확인</button></div><p class="muted">PLC Slave ID 1·2 유지. 실제 포트 경로를 입력해야 하며 주소·명령은 변경하지 않습니다. 8N1 포트 개방 및 별도 읽기전용 Modbus FC03 응답 시험을 지원합니다.</p><div class="log" id="out">실제 PLC 제어 명령 잠금</div>
+<div class="plc-read-panel"><h3>N4D4F64 실수신 모니터 · 읽기 전용</h3>
+<p class="muted">먼저 COM5 포트를 연 뒤 ID별 M0 점퍼 상태를 선택하세요. 기존 n4d4f64.py의 Modbus FC03 읽기만 송신합니다.</p>
+<div class="row"><label>ID 1 모드 <select id="plcMode1"><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label>
+<label>ID 2 모드 <select id="plcMode2"><option value="default">기본 모드 · M0 개방</option><option value="m0_short">M0 점퍼 연결</option></select></label></div>
+<button class="primary" onclick="readBothPlcs()" style="margin-top:10px">PLC ID 1·2 실제 데이터 읽기</button>
+<p class="warn">DO는 보드가 보고하는 출력 상태입니다. 실제 단자 전압·부하 동작 확인값이 아닙니다. 출력 ON/OFF 명령 송신은 차단되어 있습니다.</p>
+<div class="log" id="plcReadLog">COM5 개방 후 [PLC ID 1·2 실제 데이터 읽기]를 누르세요.</div>
+<div id="plcReadResults"><div class="plc-board" id="plcBoard1">ID 1 · 미수신</div><div class="plc-board" id="plcBoard2">ID 2 · 미수신</div></div>
+</div></div><div class="panel"><h3>안전 기본값</h3><p class="warn">실기기 구동 미허용</p><p>모터 정·역 동시 출력 금지, 0.5초 인터록, DI 리미트 확인, 통신 상실 시 안전정지 등은 PLC 실기 검증 후 승인해야 합니다.</p><p class="muted">COM5 장치 경로는 HMI에서 OPEN_OK가 확인된 값을 우선 사용하세요. 실제 PLC 응답은 아직 별도 검증이 필요합니다.</p></div></div><div class="panel" style="margin-top:12px"><h3>예정 I/O 채널 매핑</h3><table><tr><th>장치 분류</th><th>대상</th><th>상태</th></tr><tr><td>창문 / 그늘막</td><td>5개동 내외측 창문, 좌·우 그늘막</td><td>미배정</td></tr><tr><td>환풍기 / 바닥 환풍기</td><td>동별 송풍</td><td>미배정</td></tr><tr><td>조명 / 열풍기</td><td>동별 제어</td><td>미배정</td></tr><tr><td>관수 / 양액</td><td>공통 혼합기 + 동별 밸브</td><td>미배정</td></tr></table></div></section>
 <section id="update" class="page"><h2>Wi-Fi 프로그램 업데이트</h2><p class="muted">GitHub Releases의 정식 서명 APK를 내려받아 SHA-256을 검증합니다. 프로그램은 다른 앱을 직접 설치하지 않으며 파일 저장 후 Android 파일 관리자에서 설치를 승인합니다.</p><div class="row"><button class="primary" onclick="call('checkUpdate')">1. 업데이트 검색</button><button onclick="call('downloadUpdate')">2. 새 APK 다운로드</button><button onclick="call('installUpdate')">3. APK 파일로 저장</button><button onclick="refreshIp()">IP 새로고침</button></div><div class="log" id="updateStatus" style="margin-top:16px">새 버전을 검색하려면 업데이트 검색을 누르세요.</div><p class="warn">PLC 운전 중에는 APK 설치를 수행하지 마세요. Play Protect 차단 경고가 나타나면 설치를 취소하고 관리자에게 확인하세요.</p><p class="muted">HMI LAN 자동검색 UDP 포트: 38541</p><p class="muted">APK 업데이트는 사용자 승인 후 파일 저장 방식으로 진행합니다. APK 파일 설치는 Android 파일 관리자에서 별도로 승인해야 합니다.</p></section>
 </main></div>
 <div id="ebKeyboard" role="dialog" aria-modal="true" aria-label="이름 입력 터치 키보드">
@@ -157,8 +175,41 @@ function call(name){if(window.NativeDiagnostics&&typeof window.NativeDiagnostics
 function refreshIp(){el('ip').textContent=window.NativeDiagnostics?window.NativeDiagnostics.getIp():'미확인'}
 function openCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.openCom5(el('com5Path').value,parseInt(el('com5Baud').value,10)):'Android HMI 앱 전용'}
 function closeCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.closeCom5():'Android HMI 앱 전용'}
+function readBothPlcs(){
+ el('plcReadLog').textContent='PLC ID 1·2 실제 응답 확인 중 · 최대 약 5초';
+ el('plcBoard1').textContent='ID 1 · 수신 대기';
+ el('plcBoard2').textContent='ID 2 · 수신 대기';
+ if(window.NativeDiagnostics&&window.NativeDiagnostics.readPlc)
+  window.NativeDiagnostics.readPlc(el('plcMode1').value,el('plcMode2').value);
+ else el('plcReadLog').textContent='이 APK에는 Modbus 읽기 모듈이 없습니다.';
+}
+function plcGrid(bits,label){
+ var html='<h3>'+label+'</h3><div class="plc-ch-grid">';
+ for(var i=0;i<64;i++){
+  var on=bits.charAt(i)==='1';
+  html+='<div class="plc-ch '+(on?'on':'off')+'">'+('0'+(i+1)).slice(-2)+' '+(on?'ON':'OFF')+'</div>';
+ }
+ return html+'</div>';
+}
+function plcReceived(value){
+ try{
+  var p=JSON.parse(value),panel=el('plcBoard'+p.id),log=el('plcReadLog');
+  if(!panel)return;
+  if(p.status!=='OK'){
+   panel.textContent='ID '+p.id+' · 통신 실패 · '+p.message+' (현재값 미수신)';
+   log.textContent=panel.textContent;
+   return;
+  }
+  if(typeof p.di!=='string'||typeof p.do!=='string'||p.di.length!==64||p.do.length!==64)throw Error('64점 데이터 형식 오류');
+  panel.innerHTML='<h3>ID '+p.id+' · CRC 통과 · '+p.mode+'</h3>'+
+   '<p class="muted">DI 실제 수신: '+p.diSummary+'</p>'+plcGrid(p.di,'DI 01~64')+
+   '<p class="muted">DO 보드 수신: '+p.doSummary+'</p>'+plcGrid(p.do,'DO 01~64');
+  log.textContent='ID '+p.id+' 정상 수신 · CRC 확인 · 실제 DO 출력 상태는 부하 실측이 아닙니다.';
+ }catch(e){el('plcReadLog').textContent='PLC 수신 표시 오류: '+e.message}
+}
+
 function probe(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.probe('/dev/ttyS5'):'Android HMI 앱 전용'}
-window.nativeMessage=function(value){try{var p=JSON.parse(value);var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
+window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='plc'){plcReceived(p.message);return;}var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
 render();refreshIp();if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);
 </script></body></html>
