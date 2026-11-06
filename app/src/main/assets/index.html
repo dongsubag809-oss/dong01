@@ -229,7 +229,7 @@ function resetContactNames(){var h=String(el("editHouse").value);delete contactN
 var doRegistry={};try{var savedDo=JSON.parse(localStorage.getItem("eb-do-labels"));if(savedDo&&typeof savedDo==="object"&&!Array.isArray(savedDo))doRegistry=savedDo}catch(e){}
 function doAddress(id,n){return "ID "+id+" / DO"+("0"+n).slice(-2)}
 function renderDoRegistry(){var id=el("doPlcId").value;el("doRegistry").innerHTML=Array.apply(null,Array(64)).map(function(_,i){var n=i+1,k=id+"-"+n;return '<div class="row" style="margin:7px 0"><label style="min-width:118px">'+doAddress(id,n)+'</label><input maxlength="40" style="flex:1" id="doReg'+n+'" readonly onclick="openKeyboard(this)" placeholder="미지정 출력" value="'+esc(assignedDoName(+id,n))+'"></div>'}).join("")}
-function saveDoRegistry(){var id=el("doPlcId").value;for(var n=1;n<=64;n++){var k=id+"-"+n,v=el("doReg"+n).value.trim();if(v)doRegistry[k]=v;else delete doRegistry[k]}try{localStorage.setItem("eb-do-labels",JSON.stringify(doRegistry));el("doRegistryStatus").textContent="ID "+id+" DO01~DO64 이름 저장 완료 (주소 변경 없음)"}catch(e){el("doRegistryStatus").textContent="저장 실패"}}
+function saveDoRegistry(){var id=el("doPlcId").value;for(var n=1;n<=64;n++){var k=id+"-"+n,v=el("doReg"+n).value.trim();if(v)doRegistry[k]=v;else delete doRegistry[k]}try{localStorage.setItem("eb-do-labels",JSON.stringify(doRegistry));el("doRegistryStatus").textContent="ID "+id+" DO01~DO64 이름 저장 완료 · 논리주소는 고정";renderMappedHouse();renderRawManual()}catch(e){el("doRegistryStatus").textContent="저장 실패"}}
 function renderMappedHouse(){
  var target=el('manualControls');
  if(!target)return;
@@ -310,7 +310,7 @@ function renderRawManual(){
  if(!active){target.innerHTML='<p class="warn">PLC ID '+id+' 실수신 데이터 없음 · 통신이 복구되면 표시됩니다.</p>';return;}
  var html='<div class="plc-ch-grid">';
  for(var n=1;n<=64;n++){
-  var on=bits.charAt(n-1)==='1',label=doRegistry[id+'-'+n]||'';
+  var on=bits.charAt(n-1)==='1',label=assignedDoName(id,n);
   html+='<button type="button" class="plc-ch '+(on?'on':'off')+'"'+(enabled?' onclick="tapDo('+id+','+n+')"':' disabled')+'>'+
    'DO'+('0'+n).slice(-2)+' '+(on?'ON':'OFF')+
    (label?'<span style="display:block;font-size:11px;overflow-wrap:anywhere">'+esc(label)+'</span>':'')+'</button>';
@@ -335,7 +335,11 @@ function plcLinkReceived(raw){
   badge.textContent=status;
   el('plcHeaderStatus').textContent='PLC '+(plcLinks[1]?'ID1 연결':'ID1 미연결')+' / '+(plcLinks[2]?'ID2 연결':'ID2 미연결');
   if(!plcLinks[id]){plcDoStates[id]=null;plcDiStates[id]=null;}
-  renderRawManual();
+  if(plcLinks[1]&&plcLinks[2]&&selectedPlcCount()===1&&!plcArmed&&!plcCommandBusy){
+   el('plcBoardCount').value='2';
+   el('plcMode2').disabled=false;
+  }
+  renderRawManual();renderMappedHouse();
  }catch(e){el('plcPortStatus').textContent='연결 상태 표시 오류: '+e.message}
 }
 function loadAutoPlcConfig(){
@@ -364,7 +368,7 @@ function plcBoardCountChanged(){
  plcDoStates[1]=null;plcDoStates[2]=null;
  el('plcMode2').disabled=count===1;
  el('plcBoard1').textContent='ID 1 · 보드 수 변경 · 다시 읽기 필요';
- el('plcBoard2').textContent=count===1?'ID 2 · 미연결 · 시험 제외':'ID 2 · 보드 연결 후 읽기 대기';
+ el('plcBoard2').textContent=count===1?'ID 2 · 자동 연결 감시 중 · 수동 출력 제외':'ID 2 · 보드 연결 후 읽기 대기';
  el('plcReadLog').textContent=count===1?'수동 시험 대상: ID 1. 자동 상태 감시는 ID 2도 계속 확인합니다.':'수동 시험 대상: ID 1·2, 두 보드 응답 필요';
  renderRawManual();
 }
@@ -433,7 +437,7 @@ function plcReceived(value){
     el('plcArmStatus').textContent='PLC 읽기 오류 · 출력 시험 잠금';
     log.textContent=panel.textContent;
    }
-   renderRawManual();
+   renderRawManual();renderMappedHouse();
    return;
   }
   if(typeof p.di!=='string'||typeof p.do!=='string'||p.di.length!==64||p.do.length!==64)throw Error('64점 데이터 형식 오류');
@@ -442,7 +446,7 @@ function plcReceived(value){
    '<p class="muted">DI 실제 수신: '+p.diSummary+'</p>'+plcGrid(p.di,'DI 01~64',p.id,false)+
    '<p class="muted">DO 보드 수신: '+p.doSummary+'</p>'+plcGrid(p.do,'DO 01~64 · 터치하면 출력 시험',p.id,true);
   if(p.id<=selectedPlcCount())log.textContent='ID '+p.id+' 정상 수신 · CRC 확인 · DO는 PLC 실수신 접점 상태이며 실제 단자 전압값은 아닙니다.';
-  renderRawManual();
+  renderRawManual();renderMappedHouse();
  }catch(e){el('plcReadLog').textContent='PLC 수신 표시 오류: '+e.message}
 }
 
