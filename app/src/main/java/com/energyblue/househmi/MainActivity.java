@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
  private final boolean[] lastM0Shorted=new boolean[2];
  // Physical boards present on COM5: default single ID1 for isolated commissioning.
  private int activeBoardCount=1;
+ private long armSequence=0;
  private long outputArmUntil=0;
  private static final long OUTPUT_ARM_MS=60000L;
  private void markRead(int id,boolean shorted){
@@ -46,20 +47,20 @@ public final class MainActivity extends Activity {
   }
  }
  private void invalidateReads(){
-  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;}
+  synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;}
   emit("plcArm","수동 출력 시험 해제 · 통신 재확인 필요");
  }
  private void setActiveBoardCount(int count){
   if(count!=1&&count!=2)throw new IllegalArgumentException("보드 수량은 1장 또는 2장");
   synchronized(plcGuard){
    activeBoardCount=count;
-   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;
+   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;armSequence++;
   }
  }
  private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
  private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
-  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;}
+  synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;armSequence++;}
   emit("plcArm","수동 출력 시험 해제 · ID "+id+" 통신 오류");
  }
  private boolean armedAndFresh(int id,boolean shorted){
@@ -212,6 +213,8 @@ public final class MainActivity extends Activity {
    }
    final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
    setActiveBoardCount(boardCount);
+   final long armingTicket;
+   synchronized(plcGuard){armingTicket=armSequence;}
    emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 재조회 및 안전 레지스터 검사 중 · 출력 잠금");
    plcWorker.execute(()->{
     String outcome;
@@ -227,18 +230,20 @@ public final class MainActivity extends Activity {
       notifyBoard(id,modes[id-1],di,dout);
      }
      synchronized(plcGuard){
+      if(armingTicket!=armSequence||destroyed)
+       throw new java.io.IOException("사용자가 시험 승인을 취소했거나 COM5 상태가 변경되었습니다");
       outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
      }
      outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+" 실제 응답/연동 확인 · 60초 수동 단일 DO 시험 허용";
     }catch(Exception ex){
-     synchronized(plcGuard){outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;}
+     synchronized(plcGuard){outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;armSequence++;}
      outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
     }finally{plcBusy.set(false);}
     emit("plcArm",outcome);
    });
   }
   @JavascriptInterface public String disarmManualOutputs(){
-   synchronized(plcGuard){outputArmUntil=0;}
+   synchronized(plcGuard){outputArmUntil=0;armSequence++;}
    return "수동 DO 시험 잠금. 이미 ON인 출력은 자동으로 OFF하지 않습니다.";
   }
   /** Single-channel commissioning, no silent retries; both board outputs checked for conflicts.
