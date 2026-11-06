@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
  private final AtomicBoolean outputCommandPending=new AtomicBoolean(false);
  private final AtomicBoolean armRequestPending=new AtomicBoolean(false);
  private final AtomicBoolean emergencyLatched=new AtomicBoolean(false);
+ private final AtomicBoolean emergencyStopInProgress=new AtomicBoolean(false);
  private final Object plcGuard=new Object();
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
@@ -598,16 +599,18 @@ public final class MainActivity extends Activity {
    if(!emergencyLatched.compareAndSet(false,true)){
     emit("emergency","비상정지 잠금 유지 중 · 자동 복귀하지 않습니다.");return;
    }
+   emergencyStopInProgress.set(true);
    synchronized(plcGuard){outputArmUntil=0;armSequence++;lastGoodRead[0]=0;lastGoodRead[1]=0;}
    emit("plcArm","비상정지 · 수동 제어 즉시 잠금");
    emit("emergency","비상정지 접수 · 모든 신규 출력 명령 금지, PLC OFF 및 실수신 확인 진행");
    plcWorker.execute(()->{
     plcBusy.set(true);
-    try{runEmergencyStop();}finally{plcBusy.set(false);}
+    try{runEmergencyStop();}finally{emergencyStopInProgress.set(false);plcBusy.set(false);}
    });
   }
   @JavascriptInterface public String resetEmergencyStop(){
    if(!emergencyLatched.get())return "비상정지 해제 상태 · 수동 운전은 별도 활성 필요";
+   if(emergencyStopInProgress.get())return "비상정지 OFF 송신 진행 중 · 완료 확인 전 해제 불가";
    // Software reset does NOT assert real outputs are OFF or auto re-arm.
    emergencyLatched.set(false);
    synchronized(plcGuard){outputArmUntil=0;armSequence++;lastGoodRead[0]=0;lastGoodRead[1]=0;}
