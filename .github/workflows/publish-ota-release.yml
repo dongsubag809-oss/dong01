@@ -114,7 +114,7 @@ jobs:
             "V4.99: include verified 128-channel CSV and independent no-load greenhouse/manual DO tests" \
             "V5.00: manual output activation indicator and queued COM5 arming" \
             "V5.01: actual-output HMI, three-button motor control and software forward/reverse 0.5s interlock" \
-            "${RELEASE_TAG}: dashboard each house updates from actual CRC-verified PLC ID1/ID2 link; green 통신 양호 only for all required boards, disconnected/unknown states distinct" \
+            "${RELEASE_TAG}: dashboard green actual PLC link + red always-visible latched emergency stop with ID1/ID2 DO OFF attempts/CRC readback, no automatic restart; header developer 박동수" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -133,7 +133,10 @@ jobs:
             "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
             "5c. V5.01 manual page: activate Manual Operation after confirming physical wiring and hardwired emergency stop; operate motor with OPEN / STOP / CLOSE buttons and lamps, fans or irrigation with ON/OFF." \
             "5d. Direction change: opposite DO OFF/CRC/readback, 0.5 second delay and new DO ON/readback. STOP commands OFF to both outputs, but DOES NOT replace hardwired emergency-stop or limit-switch protection." \
-            "5e. No simulation, no load-disconnected test controls. DI limit addresses and physical channel wiring remain unverified; do not energize field motors before site verification." \
+            "5e. Always-visible red Emergency Stop blocks new output commands and attempts to turn OFF all currently ON DO on both ID1 and ID2; each stop result is confirmed only by real PLC CRC readback." \
+            "5f. Emergency stop is a software RS485 sequential command, not a hardware E-stop. Disconnected PLC or interrupted bus can leave motors energized. Use independently wired fail-safe emergency stop and safety relays." \
+            "5g. Emergency latch reset is manual, does not auto-restart any DO, and is blocked while OFF requests are running. DI inputs cannot be reset by HMI." \
+            "5h. Header developer identification: 박동수. DI limit addresses and physical motor wiring remain unverified." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
