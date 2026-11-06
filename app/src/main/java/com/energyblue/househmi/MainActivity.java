@@ -33,6 +33,7 @@ public final class MainActivity extends Activity {
  private LanDiscovery discovery;
  private final ExecutorService plcWorker=Executors.newSingleThreadExecutor();
  private final AtomicBoolean plcBusy=new AtomicBoolean(false);
+ private final AtomicBoolean outputCommandPending=new AtomicBoolean(false);
  private final Object plcGuard=new Object();
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
@@ -170,7 +171,7 @@ public final class MainActivity extends Activity {
  private final Runnable plcAutoPoll=new Runnable(){
   @Override public void run(){
    if(destroyed)return;
-   if(!plcAutoPaused&&plcBusy.compareAndSet(false,true)){
+   if(!plcAutoPaused&&!outputCommandPending.get()&&plcBusy.compareAndSet(false,true)){
     plcWorker.execute(()->{
      try{autoScanOnce();}
      finally{plcBusy.set(false);}
@@ -240,7 +241,7 @@ public final class MainActivity extends Activity {
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
   @JavascriptInterface public String openCom5(String path,int baud){
-   if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";
+   if(plcBusy.get()||outputCommandPending.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";
    invalidateReads();
    String result=SerialPort.open(path,baud);
    if("OPEN_OK".equals(result)){
@@ -251,7 +252,7 @@ public final class MainActivity extends Activity {
    return result+" | ID 1·2 자동 실수신 감시 · DO 자동 출력 없음";
   }
   @JavascriptInterface public String closeCom5(){
-   if(plcBusy.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";
+   if(plcBusy.get()||outputCommandPending.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";
    plcAutoPaused=true;
    invalidateReads();
    SerialPort.close();
@@ -363,11 +364,13 @@ public final class MainActivity extends Activity {
    if(slave<1||slave>activeBoards()||channel<1||channel>64||!validMode(mode)){
     writeStatus(slave,channel,"DENIED","현재 연결 수량에서 ID "+slave+" 출력은 시험 제외 또는 주소 오류");return;
    }
-   if(!plcBusy.compareAndSet(false,true)){
-    writeStatus(slave,channel,"DENIED","다른 COM5 송수신 작업 중");return;
+   if(!outputCommandPending.compareAndSet(false,true)){
+    writeStatus(slave,channel,"DENIED","이전 DO 명령 처리 중");return;
    }
    final boolean shorted="m0_short".equals(mode);
+   writeStatus(slave,channel,"WORKING","COM5 통신 작업 순서 대기 · 기존 자동 감시 종료 후 전송");
    plcWorker.execute(()->{
+    plcBusy.set(true);
     boolean commandSent=false;
     try{
      if(destroyed||!armedAndFresh(slave,shorted))
@@ -418,7 +421,7 @@ public final class MainActivity extends Activity {
      writeStatus(slave,channel,commandSent?"UNKNOWN":"DENIED",
       (commandSent?"출력 명령 송신 후 상태 불확실 · 실제 출력 확인 필요: ":"명령 차단: ")+
       (ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage()));
-    }finally{plcBusy.set(false);}
+    }finally{plcBusy.set(false);outputCommandPending.set(false);}
    });
   }
   @JavascriptInterface public String getIp(){return localIp();}
