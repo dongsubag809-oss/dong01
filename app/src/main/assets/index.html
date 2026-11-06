@@ -252,86 +252,94 @@ function doAddress(id,n){return "ID "+id+" / DO"+("0"+n).slice(-2)}
 function renderDoRegistry(){var id=el("doPlcId").value;el("doRegistry").innerHTML=Array.apply(null,Array(64)).map(function(_,i){var n=i+1,k=id+"-"+n;return '<div class="row" style="margin:7px 0"><label style="min-width:118px">'+doAddress(id,n)+'</label><input maxlength="40" style="flex:1" id="doReg'+n+'" readonly onclick="openKeyboard(this)" placeholder="미지정 출력" value="'+esc(assignedDoName(+id,n))+'"></div>'}).join("")}
 function saveDoRegistry(){var id=el("doPlcId").value;for(var n=1;n<=64;n++){var k=id+"-"+n,v=el("doReg"+n).value.trim();if(v===assignedDoName(+id,n))continue;if(!v||v===defaultDoName(+id,n))delete doRegistry[k];else doRegistry[k]=v}try{localStorage.setItem("eb-do-labels",JSON.stringify(doRegistry));el("doRegistryStatus").textContent="ID "+id+" DO01~DO64 이름 저장 완료 · 논리주소는 고정";renderMappedHouse();renderRawManual()}catch(e){el("doRegistryStatus").textContent="저장 실패"}}
 function renderMappedHouse(){
- var target=el('manualControls');
- if(!target)return;
- var h=selected;
- target.innerHTML=mappedOutputs.map(function(title,i){
-  var addr=assignedOutput(h,i),id=addr.id,ch=addr.ch;
-  var bits=plcDoStates[id],connected=plcLinks[id]&&bits&&bits.length===64;
-  var on=connected?bits.charAt(ch-1)==='1':false;
-  var state=!connected?'미연결':(on?'ON':'OFF');
-  var allow=!!connected&&id<=selectedPlcCount();
-  var n=assignedDoName(id,ch);
-  var key='id'+id+'do'+ch;
-  return '<div class="control" data-output="'+key+'"><h3>'+esc(n)+'</h3>'+
-   '<p class="muted">'+doAddress(id,ch)+' · '+(i>=4&&i<20?'모터 정·역 인터록 필요':'단일 접점')+'</p>'+
-   '<div class="row"><button '+(allow?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',true)">ON</button>'+
-   '<button '+(allow?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',false)">OFF</button></div>'+
-   '<p class="state">PLC 실수신: '+state+'</p></div>';
- }).join('');
+ var target=el('manualControls');if(!target)return;
+ var h=selected,html='';
+ for(var i=0;i<24;i++){
+  if(i>=4&&i<=19&&i%2===1)continue; // second contact belongs to previous motor
+  var a=assignedOutput(h,i),id=a.id,ch=a.ch;
+  var bits=plcDoStates[id],connected=!!(plcLinks[id]&&bits&&bits.length===64);
+  var enabled=connected&&id<=selectedPlcCount();
+  var on=connected&&bits.charAt(ch-1)==='1';
+  if(i>=4&&i<=19){
+   var opposite=assignedOutput(h,i+1),otherBits=plcDoStates[opposite.id];
+   var reverse=connected&&otherBits&&otherBits.length===64&&otherBits.charAt(opposite.ch-1)==='1';
+   var state=!connected?'미연결':on&&reverse?'정·역 충돌':on?'열림 동작':reverse?'닫힘 동작':'정지';
+   var name=assignedDoName(id,ch).replace(/ (열림|닫힘)$/,'');
+   html+='<div class="motor-control" data-output="id'+id+'do'+ch+'"><h3>'+esc(name)+'</h3>'+
+    '<p class="muted">'+doAddress(id,ch)+' 열림 · '+doAddress(opposite.id,opposite.ch)+' 닫힘</p>'+
+    '<div class="motor-actions">'+
+    '<button type="button" class="up '+(on?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',1)">▲ 열림</button>'+
+    '<button type="button" class="stop" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',0)">■ 정지</button>'+
+    '<button type="button" class="down '+(reverse?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',-1)">▼ 닫힘</button></div>'+
+    '<p class="motor-state">PLC DO 실수신: '+state+'</p></div>';
+  }else{
+   var name=assignedDoName(id,ch),state=!connected?'미연결':on?'ON':'OFF';
+   html+='<div class="control" data-output="id'+id+'do'+ch+'"><h3>'+esc(name)+'</h3>'+
+    '<p class="muted">'+doAddress(id,ch)+'</p><div class="onoff-actions">'+
+    '<button type="button" '+(enabled?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',true)">ON</button>'+
+    '<button type="button" '+(enabled?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',false)">OFF</button></div>'+
+    '<p class="state">PLC DO 실수신: '+state+'</p></div>';
+  }
+ }
+ target.innerHTML=html;
 }
 function setManualOutputStatus(message,active){
  var status=el('manualOutputStatus'),badge=el('manualOutputBadge');
  if(status)status.textContent=message;
- if(badge)badge.textContent=active?'무부하 수동 ON/OFF 활성':'출력 잠금';
+ if(badge)badge.textContent=active?'수동 운전 활성':'출력 잠금';
 }
-function startManualBench(){
- var ack=el('manualNoLoadAck'),bridge=window.NativeDiagnostics;
- if(!ack||!ack.checked){
-  setManualOutputStatus('출력 잠금 · 외부 부하 미연결 확인 체크 필요',false);
-  return;
- }
+function activateManualControl(){
+ var bridge=window.NativeDiagnostics;
  if(!bridge||!bridge.armManualOutputs){
-  setManualOutputStatus('Android HMI 출력 제어 모듈을 찾지 못했습니다.',false);
-  return;
+  setManualOutputStatus('Android PLC 제어 모듈이 연결되지 않았습니다.',false);return;
  }
  var count=plcLinks[1]?(plcLinks[2]?2:1):0;
- if(!count){
-  setManualOutputStatus('PLC ID 1 미연결 · 실제 통신 확인 후 시험 가능',false);
-  return;
- }
- // Keep native board selection, M0 mode and WebView control path consistent.
+ if(!count){setManualOutputStatus('PLC ID 1 미연결 · 실제 CRC 통신이 확인되어야 합니다.',false);return;}
  el('plcBoardCount').value=String(count);
  el('plcMode2').disabled=count===1;
- el('plcTestMode').value='bench';
- el('plcSafetyAck').checked=true;
  plcArmed=false;plcArmDeadline=0;
- setManualOutputStatus('PLC ID 1'+(count===2?'·2':'')+' 출력 안전조건과 실수신 확인 중 · 출력 잠금',false);
+ setManualOutputStatus('PLC ID 1'+(count===2?'·2':'')+' 안전 레지스터와 수신 상태 확인 중',false);
  try{
-  bridge.armManualOutputs(el('plcMode1').value,el('plcMode2').value,count,true);
- }catch(e){
-  setManualOutputStatus('출력 활성화 요청 오류: '+e.message,false);
- }
+  bridge.armManualOutputs(el('plcMode1').value,el('plcMode2').value,count);
+ }catch(e){setManualOutputStatus('수동 운전 활성 오류: '+e.message,false);}
 }
-function stopManualBench(){
- var acknowledgement=el('manualNoLoadAck');
- if(acknowledgement)acknowledgement.checked=false;
- disarmDoTest();
- setManualOutputStatus('수동 출력 시험 잠금 · 이미 ON인 DO는 자동 OFF되지 않습니다.',false);
+function lockManualControl(){
+ plcArmed=false;plcArmDeadline=0;
+ var bridge=window.NativeDiagnostics;
+ var result=bridge&&bridge.disarmManualOutputs?bridge.disarmManualOutputs():'수동 운전 잠금';
+ if(el('plcArmStatus'))el('plcArmStatus').textContent=result;
+ setManualOutputStatus(result,false);
+}
+function motorMove(h,slot,direction){
+ var a=assignedOutput(h,slot),opposite=assignedOutput(h,slot+1),log=el('manualOutputStatus');
+ if(!a||!opposite||a.id!==opposite.id)return;
+ if(!plcLinks[a.id]||!plcDoStates[a.id]||a.id>selectedPlcCount()){
+  log.textContent='PLC '+a.id+' 통신 미연결 · 모터 동작 불가';return;
+ }
+ if(direction!==0&&!plcArmed){
+  log.textContent='수동 운전 잠금 · 수동 운전 활성 버튼을 먼저 눌러 주세요';return;
+ }
+ if(plcCommandBusy){log.textContent='이전 PLC 동작 완료 후 다음 명령을 눌러 주세요';return;}
+ if(!window.NativeDiagnostics||!window.NativeDiagnostics.motorCommand){
+  log.textContent='모터 정·역 인터록을 지원하지 않는 Android 프로그램입니다.';return;
+ }
+ plcCommandBusy=true;
+ log.textContent=doAddress(a.id,a.ch)+' / '+doAddress(opposite.id,opposite.ch)+
+  ' · '+(direction===1?'열림':direction===-1?'닫힘':'정지')+' 명령 및 실수신 확인 중';
+ window.NativeDiagnostics.motorCommand(a.id,a.ch,opposite.ch,direction,el('plcMode'+a.id).value);
 }
 function manualMappedOutput(h,slot,on){
- var a=assignedOutput(h,slot),log=el('manualOutputStatus');
- if(!a)return;
- // Isolated/no-load commissioning may test all mapped 120 DO independently.
- // No equipment may be attached when this selector is active.
+ var a=assignedOutput(h,slot),log=el('manualOutputStatus');if(!a)return;
+ if(slot>=4&&slot<=19){log.textContent='모터는 ▲ 열림 / ■ 정지 / ▼ 닫힘으로 조작하세요';return;}
  if(!plcLinks[a.id]||!plcDoStates[a.id]||a.id>selectedPlcCount()){
-  log.textContent=doAddress(a.id,a.ch)+' 미연결 또는 수동제어 대상 아님';return;
+  log.textContent=doAddress(a.id,a.ch)+' 미연결 또는 실제 데이터 미수신';return;
  }
- if(!plcArmed||(plcArmDeadline>0&&Date.now()>plcArmDeadline)){
-  log.textContent='출력 잠금: I/O 메뉴에서 시험 종류 선택 후 안전 확인 → 시험 시작(ARM_OK)이 필요합니다.';return;
- }
- if(plcCommandBusy){log.textContent='다른 PLC 명령 처리 중';return;}
- if(el('plcTestMode').value!=='bench'&&on&&slot>=4&&slot<20){
-  var peer=assignedOutput(h,slot%2===0?slot+1:slot-1);
-  var pb=plcDoStates[peer.id];
-  if(!pb||pb.charAt(peer.ch-1)==='1'){
-   log.textContent='모터 정·역 반대 출력 ON 또는 미수신 · 먼저 반대 방향 OFF를 확인하세요.';return;
-  }
- }
+ if(!plcArmed){log.textContent='수동 운전 잠금 · 수동 운전 활성 버튼을 눌러 주세요';return;}
+ if(plcCommandBusy){log.textContent='다른 PLC 명령 완료 후 조작하세요';return;}
  var actual=plcDoStates[a.id].charAt(a.ch-1)==='1';
- if(actual===on){log.textContent=doAddress(a.id,a.ch)+' 실수신이 이미 '+(on?'ON':'OFF')+' 상태입니다.';return;}
+ if(actual===on){log.textContent=doAddress(a.id,a.ch)+' 이미 '+(on?'ON':'OFF')+' 상태입니다';return;}
  plcCommandBusy=true;
- log.textContent=doAddress(a.id,a.ch)+' '+(on?'ON':'OFF')+' 명령 전송 및 실수신 확인 중';
+ log.textContent=doAddress(a.id,a.ch)+' '+(on?'ON':'OFF')+' 명령 및 PLC 재수신 확인 중';
  window.NativeDiagnostics.setDoOutput(a.id,a.ch,on,el('plcMode'+a.id).value);
 }
 function render(){
