@@ -100,6 +100,23 @@ assert(node("houseComm5").textContent==="통신 미연결","Lost ID2 must revoke
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:true})}));
 const zeros="0".repeat(64);
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:zeros,do:zeros,diSummary:"ON 0",doSummary:"ON 0",mode:"M0 개방"}));
+// The selected motor action MUST fill the whole button, based on actual received DO only.
+const manualCss=html.slice(html.indexOf(".motor-actions"),html.indexOf(".onoff-actions"));
+assert(manualCss.includes("button.up.motor-selected{background:#14783c"),"Selected OPEN must have full green fill");
+assert(manualCss.includes("button.stop.motor-selected{background:#c87919"),"Selected STOP must have full orange fill");
+assert(manualCss.includes("button.down.motor-selected{background:#325caa"),"Selected CLOSE must have full blue fill");
+function assertMotorChoice(bits,expected,description){
+ ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:zeros,do:bits,diSummary:"ON 0",doSummary:"",mode:"M0 개방"}));
+ const card=node("manualControls").innerHTML;
+ const motor=card.slice(card.indexOf('data-output="id1do5"'),card.indexOf('data-output="id1do7"'));
+ assert(motor.includes('class="'+expected+' motor-selected"'),description);
+ assert.strictEqual((motor.match(/motor-selected/g)||[]).length,1,"Only one motor choice should be selected");
+}
+assertMotorChoice(zeros,"stop","Both motor DO OFF -> orange STOP selected");
+assertMotorChoice(zeros.slice(0,4)+"1"+zeros.slice(5),"up","PLC DO05 ON -> green OPEN selected");
+assertMotorChoice(zeros.slice(0,5)+"1"+zeros.slice(6),"down","PLC DO06 ON -> blue CLOSE selected");
+ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:zeros,do:zeros,diSummary:"ON 0",doSummary:"ON 0",mode:"M0 개방"}));
+
 ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:2,connected:false})}));
 ctx.activateManualControl();
 assert.strictEqual(armed[2],1,"Manual activation with only physically present ID1 must choose one board");
