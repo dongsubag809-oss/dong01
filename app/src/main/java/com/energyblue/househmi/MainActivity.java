@@ -35,6 +35,8 @@ public final class MainActivity extends Activity {
  private final Object plcGuard=new Object();
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
+ // Physical boards present on COM5: default single ID1 for isolated commissioning.
+ private int activeBoardCount=1;
  private long outputArmUntil=0;
  private static final long OUTPUT_ARM_MS=60000L;
  private void markRead(int id,boolean shorted){
@@ -47,6 +49,15 @@ public final class MainActivity extends Activity {
   synchronized(plcGuard){lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;}
   emit("plcArm","수동 출력 시험 해제 · 통신 재확인 필요");
  }
+ private void setActiveBoardCount(int count){
+  if(count!=1&&count!=2)throw new IllegalArgumentException("보드 수량은 1장 또는 2장");
+  synchronized(plcGuard){
+   activeBoardCount=count;
+   lastGoodRead[0]=0;lastGoodRead[1]=0;outputArmUntil=0;
+  }
+ }
+ private int activeBoards(){synchronized(plcGuard){return activeBoardCount;}}
+ private static boolean validMode(String mode){return "default".equals(mode)||"m0_short".equals(mode);}
  private void invalidateBoard(int id){
   synchronized(plcGuard){lastGoodRead[id-1]=0;outputArmUntil=0;}
   emit("plcArm","수동 출력 시험 해제 · ID "+id+" 통신 오류");
@@ -54,10 +65,11 @@ public final class MainActivity extends Activity {
  private boolean armedAndFresh(int id,boolean shorted){
   synchronized(plcGuard){
    long now=android.os.SystemClock.elapsedRealtime();
-   // The arming itself requires both reads within 10s. During the 60s
-   // arming window every write ALWAYS scans both boards afresh before sending.
-   return outputArmUntil>now
-     && lastGoodRead[0]>0&&lastGoodRead[1]>0
+   // Arming has verified only physically connected boards. Every write
+   // rechecks all active outputs and safety registers before transmission.
+   int count=activeBoardCount;
+   return id>=1&&id<=count&&outputArmUntil>now
+     && lastGoodRead[0]>0&&(count==1||lastGoodRead[1]>0)
      && lastM0Shorted[id-1]==shorted;
   }
  }
@@ -79,16 +91,17 @@ public final class MainActivity extends Activity {
    emit("plcWrite",obj.toString());
   }catch(Exception ignored){emit("plcWrite","{\"status\":\"ERROR\",\"message\":\"상태 형식 오류\"}");}
  }
- private boolean[][] scanBothBoards(boolean[] modes)throws Exception{
+ private boolean[][] scanActiveBoards(boolean[] modes,int count)throws Exception{
+  if(count!=1&&count!=2)throw new java.io.IOException("설정된 보드 수량 오류");
   boolean[][] states=new boolean[2][];
-  for(int id=1;id<=2;id++){
+  for(int id=1;id<=count;id++){
    int addr=ModbusReadOnly.addresses(modes[id-1])[0];
    states[id-1]=ModbusReadOnly.read64(id,addr);
   }
   return states;
  }
- private boolean otherOutputActive(boolean[][] states,int slave,int channel){
-  for(int id=0;id<2;id++)
+ private boolean otherOutputActive(boolean[][] states,int slave,int channel,int count){
+  for(int id=0;id<count;id++)
    for(int c=0;c<64;c++)
     if(states[id][c]&&(id+1!=slave||c+1!=channel))return true;
   return false;
@@ -154,19 +167,22 @@ public final class MainActivity extends Activity {
     obj.put("result",file.exists()?"장치 파일 확인됨 (RS485 통신 미검증)":"장치 파일 없음");return obj.toString();
    }catch(Exception ex){return "{\"result\":\"진단 오류\"}";}
   }
-  @JavascriptInterface public String openCom5(String path,int baud){if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";invalidateReads();return SerialPort.open(path,baud)+" | PLC ID 1,2 유지 | 출력은 시험 승인 후에만 가능";}
+  @JavascriptInterface public String openCom5(String path,int baud){if(plcBusy.get())return "COM5_BUSY · 송수신 중 포트 변경 차단";invalidateReads();return SerialPort.open(path,baud)+" | 연결 보드 수량 선택 후 읽기 · 출력은 수동 승인 필요";}
   @JavascriptInterface public String closeCom5(){if(plcBusy.get())return "COM5_BUSY · 실제 비상정지는 외부 하드웨어로 실행";invalidateReads();SerialPort.close();return "COM5 닫힘";}
-  /** Read two N4D4F64 boards using verified legacy FC03 addresses. */
-  @JavascriptInterface public void readPlc(String mode1,String mode2){
-   if(!"default".equals(mode1)&&!"m0_short".equals(mode1)){emit("plc","{\"id\":1,\"status\":\"ERROR\",\"message\":\"ID1 M0 모드 선택 오류\"}");return;}
-   if(!"default".equals(mode2)&&!"m0_short".equals(mode2)){emit("plc","{\"id\":2,\"status\":\"ERROR\",\"message\":\"ID2 M0 모드 선택 오류\"}");return;}
+  /** Read only the physically connected N4D4F64 IDs; FC03 map unchanged. */
+  @JavascriptInterface public void readPlc(String mode1,String mode2,int boardCount){
+   if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
+    emit("plcArm","실제 연결 보드 수량 또는 M0 모드 선택 오류");return;
+   }
    final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
    if(!plcBusy.compareAndSet(false,true)){
-    emit("plcArm","COM5 처리 중입니다. 이전 작업이 끝난 뒤 다시 읽어 주세요.");return;
+    emit("plcArm","COM5 처리 중입니다. 이전 작업 완료 후 읽어 주세요.");return;
    }
+   setActiveBoardCount(boardCount);
+   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 읽기 중 · 출력 시험은 잠금 상태");
    plcWorker.execute(()->{
     try{
-     for(int slave=1;slave<=2;slave++){
+     for(int slave=1;slave<=boardCount;slave++){
       if(destroyed||Thread.currentThread().isInterrupted())return;
       try{
        int[] addrs=ModbusReadOnly.addresses(modes[slave-1]);
@@ -184,48 +200,40 @@ public final class MainActivity extends Activity {
     }finally{plcBusy.set(false);}
    });
   }
-  /** Arming requires fresh CRC-checked DI/DO reads from BOTH real PLC boards.
-   * Automatically expires after 60 seconds and is discarded on any read/write failure.
+  /** Fresh read and safety validation before enabling any output, count 1 or 2.
+   * Output arming expires after 60 seconds and resets on failure.
    */
-  /** Manual arming performs fresh CRC-checked reads of BOTH boards.
-   * The user may spend longer than ten seconds examining the display before
-   * pressing Activate; countdown starts only after fresh scans succeed.
-   */
-  @JavascriptInterface public void armManualOutputs(String mode1,String mode2){
-   if(!("default".equals(mode1)||"m0_short".equals(mode1))||
-      !("default".equals(mode2)||"m0_short".equals(mode2))){
-    emit("plcArm","수동 출력 승인 실패: 두 PLC의 M0 모드를 선택해 주세요.");return;
+  @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount){
+   if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
+    emit("plcArm","수동 출력 승인 실패: 보드 수량 또는 M0 모드 오류");return;
    }
    if(!plcBusy.compareAndSet(false,true)){
-    emit("plcArm","수동 출력 승인 대기 실패: COM5 읽기/쓰기 중입니다. 작업 완료 후 다시 눌러 주세요.");return;
+    emit("plcArm","수동 출력 승인 대기 실패: COM5 송수신 중입니다.");return;
    }
    final boolean[] modes={"m0_short".equals(mode1),"m0_short".equals(mode2)};
-   emit("plcArm","PLC ID 1·2를 새로 읽고 출력 연동 설정 확인 중입니다. 아직 출력 승인이 아닙니다.");
+   setActiveBoardCount(boardCount);
+   emit("plcArm","PLC ID 1"+(boardCount==2?"·2":"")+" 재조회 및 안전 레지스터 검사 중 · 출력 잠금");
    plcWorker.execute(()->{
     String outcome;
     try{
      if(destroyed||Thread.currentThread().isInterrupted())throw new java.io.IOException("통신 작업 중단");
-     for(int id=1;id<=2;id++){
-      int[] addresses=ModbusReadOnly.addresses(modes[id-1]);
-      boolean[] dout=ModbusReadOnly.read64(id,addresses[0]);
-      boolean[] di=ModbusReadOnly.read64(id,addresses[1]);
-      String block=ModbusReadOnly.safetyProblem(id);
-      if(block!=null)throw new java.io.IOException(block);
+     for(int id=1;id<=boardCount;id++){
+      int[] addrs=ModbusReadOnly.addresses(modes[id-1]);
+      boolean[] dout=ModbusReadOnly.read64(id,addrs[0]);
+      boolean[] di=ModbusReadOnly.read64(id,addrs[1]);
+      String blocked=ModbusReadOnly.safetyProblem(id);
+      if(blocked!=null)throw new java.io.IOException(blocked);
       markRead(id,modes[id-1]);
       notifyBoard(id,modes[id-1],di,dout);
      }
      synchronized(plcGuard){
       outputArmUntil=android.os.SystemClock.elapsedRealtime()+OUTPUT_ARM_MS;
      }
-     outcome="ARM_OK · PLC ID 1·2 CRC/출력연동 확인 · 지금부터 60초 동안 단일 DO 시험 허용";
+     outcome="ARM_OK · PLC ID 1"+(boardCount==2?"·2":"")+" 실제 응답/연동 확인 · 60초 수동 단일 DO 시험 허용";
     }catch(Exception ex){
-     synchronized(plcGuard){
-      outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;
-     }
+     synchronized(plcGuard){outputArmUntil=0;lastGoodRead[0]=0;lastGoodRead[1]=0;}
      outcome="수동 출력 시험 차단: "+(ex.getMessage()==null?ex.getClass().getSimpleName():ex.getMessage());
-    }finally{
-     plcBusy.set(false);
-    }
+    }finally{plcBusy.set(false);}
     emit("plcArm",outcome);
    });
   }
@@ -237,9 +245,8 @@ public final class MainActivity extends Activity {
    * Physical limit DI and direction mapping unknown: never assume a safe motor pairing.
    */
   @JavascriptInterface public void setDoOutput(int slave,int channel,boolean on,String mode){
-   if(slave<1||slave>2||channel<1||channel>64||
-      !("default".equals(mode)||"m0_short".equals(mode))){
-    writeStatus(slave,channel,"DENIED","PLC 주소·채널·M0 모드 오류");return;
+   if(slave<1||slave>activeBoards()||channel<1||channel>64||!validMode(mode)){
+    writeStatus(slave,channel,"DENIED","현재 연결 수량에서 ID "+slave+" 출력은 시험 제외 또는 주소 오류");return;
    }
    if(!plcBusy.compareAndSet(false,true)){
     writeStatus(slave,channel,"DENIED","다른 COM5 송수신 작업 중");return;
@@ -251,8 +258,10 @@ public final class MainActivity extends Activity {
      if(destroyed||!armedAndFresh(slave,shorted))
       throw new java.io.IOException("수동 승인 60초 만료·PLC 읽기 상태 오래됨·모드 불일치");
      boolean[] modes=modesSnapshot();
+     int boardCount=activeBoards();
+     if(slave>boardCount)throw new java.io.IOException("연결되지 않은 PLC ID 출력 차단");
      writeStatus(slave,channel,"WORKING","ID "+slave+" DO"+channel+" 최신 상태·안전 레지스터 점검 중");
-     boolean[][] states=scanBothBoards(modes);
+     boolean[][] states=scanActiveBoards(modes,boardCount);
      // Existing verified Python worker checks these exact remote/relationship registers.
      String guard=ModbusReadOnly.safetyProblem(slave);
      if(guard!=null)throw new java.io.IOException(guard);
@@ -262,14 +271,14 @@ public final class MainActivity extends Activity {
       return;
      }
      if(on){
-      if(otherOutputActive(states,slave,channel))
+      if(otherOutputActive(states,slave,channel,boardCount))
        throw new java.io.IOException("다른 DO가 ON입니다. 결선 미확인 보호: 한 채널만 ON 허용");
       // Read the entire bus again after 0.5s so no unknown reverse output overlaps.
       Thread.sleep(500);
       if(!armedAndFresh(slave,shorted))
        throw new java.io.IOException("재점검 중 수동 승인/통신 신선도 만료");
-      states=scanBothBoards(modes);
-      if(otherOutputActive(states,slave,channel))
+      states=scanActiveBoards(modes,boardCount);
+      if(otherOutputActive(states,slave,channel,boardCount))
        throw new java.io.IOException("재확인에서 다른 DO ON 감지, ON 명령 취소");
       guard=ModbusReadOnly.safetyProblem(slave);
       if(guard!=null)throw new java.io.IOException("출력 직전 "+guard);
