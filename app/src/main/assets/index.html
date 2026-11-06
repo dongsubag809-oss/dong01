@@ -83,7 +83,10 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 .motor-actions .down{background:#345c86}.motor-actions button.active{border:2px solid #b6e9de}
 .motor-state{font-weight:bold;color:#b5ebd0}
 .onoff-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.onoff-actions button{min-height:48px;margin:0;font-size:15px}
+.onoff-actions button{min-height:48px;margin:0;font-size:15px;background:#294254;color:#d3e2eb;border:2px solid #4b6574;border-radius:10px;font-weight:800}
+.onoff-actions button.output-on-selected{background:#14783c;color:#ffffff;border-color:#82f3ae;box-shadow:inset 0 0 0 1px #b7ffcf}
+.onoff-actions button.output-off-selected{background:#325c86;color:#ffffff;border-color:#9bd2ff;box-shadow:inset 0 0 0 1px #d4ecff}
+.onoff-actions button:disabled{opacity:.53;box-shadow:none}
 @media(max-width:730px){.controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.controls{grid-template-columns:1fr}}
 </style></head>
@@ -286,16 +289,16 @@ function renderMappedHouse(){
     '<p class="muted">'+doAddress(id,ch)+' 열림 · '+doAddress(opposite.id,opposite.ch)+' 닫힘</p>'+
     '<div class="motor-actions">'+
     '<button type="button" class="up '+(on?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',1)">▲ 열림</button>'+
-    '<button type="button" class="stop" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',0)">■ 정지</button>'+
+    '<button type="button" class="stop '+(connected&&!on&&!reverse?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',0)">■ 정지</button>'+
     '<button type="button" class="down '+(reverse?'active':'')+'" '+(enabled?'':'disabled ')+'onclick="motorMove('+h+','+i+',-1)">▼ 닫힘</button></div>'+
-    '<p class="motor-state">PLC DO 실수신: '+state+'</p></div>';
+    '</div>';
   }else{
-   var name=assignedDoName(id,ch),state=!connected?'미연결':on?'ON':'OFF';
+   var name=assignedDoName(id,ch);
    html+='<div class="control" data-output="id'+id+'do'+ch+'"><h3>'+esc(name)+'</h3>'+
     '<p class="muted">'+doAddress(id,ch)+'</p><div class="onoff-actions">'+
-    '<button type="button" '+(enabled?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',true)">ON</button>'+
-    '<button type="button" '+(enabled?'':'disabled ')+'onclick="manualMappedOutput('+h+','+i+',false)">OFF</button></div>'+
-    '<p class="state">PLC DO 실수신: '+state+'</p></div>';
+    '<button type="button" class="'+(connected&&on?'output-on-selected':'')+'" '+(enabled?'':'disabled ')+'aria-pressed="'+(connected&&on?'true':'false')+'" onclick="manualMappedOutput('+h+','+i+',true)">ON</button>'+
+    '<button type="button" class="'+(connected&&!on?'output-off-selected':'')+'" '+(enabled?'':'disabled ')+'aria-pressed="'+(connected&&!on?'true':'false')+'" onclick="manualMappedOutput('+h+','+i+',false)">OFF</button></div>'+
+    '</div>';
   }
  }
  target.innerHTML=html;
