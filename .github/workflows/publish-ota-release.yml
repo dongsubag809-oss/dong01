@@ -111,7 +111,8 @@ jobs:
             "V4.96: isolated ID1 bench control with independent DO01-64 and session-only manual arm" \
             "V4.97: automatic COM5 ID1/ID2 link-state monitoring and actual 128-channel raw I/O console" \
             "V4.98: historical 24DO per house mapping across 120 channels and 8 spare, editable Korean output names" \
-            "${RELEASE_TAG}: include verified 128-channel CSV in the ZIP; allow independent no-load manual test from mapped greenhouse buttons and raw DO screen" \
+            "V4.99: include verified 128-channel CSV and independent no-load greenhouse/manual DO tests" \
+            "${RELEASE_TAG}: fix static manual Output Locked display; inline no-load arm on greenhouse page, queue behind COM5 auto polling, show ARM_OK and actual DO write results" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -128,7 +129,8 @@ jobs:
             "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
             "5a. Actual address plan is in DO_MAP_128.csv: houses 1-5 use 24 DO each in order, ID2 DO57-64 are spare. This is a logical plan, NOT verified physical wiring." \
             "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
-            "5c. No-load bench test can activate individual outputs on both present ID1/ID2 boards without modal popups. Do not connect loads while it is armed." \
+            "5c. V5.00 manual page: tick physically no-load checkbox -> click Start no-load test -> confirm ARM_OK status -> ON/OFF DO by house/number. Lock test after use." \
+            "5d. The manual page shows actual PLC CRC/DO receive values. If ARM_OK is missing, source gives the Modbus/safety reason; no auto-output on reconnection." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt *.csv)
