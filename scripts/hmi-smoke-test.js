@@ -64,7 +64,8 @@ assert(manifest.includes("androidx.core.content.FileProvider"),"APK FileProvider
 assert(manifest.includes('android:exported="false"'),"APK provider must not be exported");
 assert(paths.includes('path="ota/"'),"Restricted verified APK cache mapping missing");
 assert(updater.includes("SHA-256")&&updater.includes("MessageDigest"),"Verified download regression");
-assert(html.includes("PLC ID 1·2 실제 데이터 읽기"),"PLC FC03 diagnostics regressed");
+assert(html.includes("선택 PLC 실제 데이터 읽기"),"PLC FC03 diagnostics regressed");
+assert(html.includes('value="1" selected>1장 · ID 1만 시험'),"Default single-ID1 test mode missing");
 
 
 // Real DO buttons are generated from received state, not requested state.
@@ -72,19 +73,25 @@ const shown = ctx.plcGrid("0".repeat(64),"DO 01~64",1,true);
 assert(shown.includes("tapDo(1,1)")&&shown.includes("tapDo(1,64)"),"All DO tiles must be touchable");
 assert.strictEqual((shown.match(/<button /g)||[]).length,64,"DO 1~64 count");
 assert(!ctx.plcGrid("0".repeat(64),"DI 01~64",2,false).includes("tapDo("),"DI must not control output");
-let requested=null,armingModes=null;
+let requested=null,armingModes=null,readBoardCount=null;
 ctx.window.confirm=()=>true;
 ctx.window.NativeDiagnostics={
- armManualOutputs:(m1,m2)=>{armingModes=[m1,m2];},
+ armManualOutputs:(m1,m2,count)=>{armingModes=[m1,m2,count];},
+ readPlc:(m1,m2,count)=>{readBoardCount=count;},
  disarmManualOutputs:()=>"잠금",
  setDoOutput:(id,ch,on,mode)=>{requested={id,ch,on,mode};}
 };
 node("plcSafetyAck").checked=true;
 node("plcMode1").value="default";
+node("plcMode2").value="default";
+node("plcBoardCount").value="1";
+assert.strictEqual(ctx.plcBoardCount(),1,"Single-board default selector read");
+ctx.readBothPlcs();
+assert.strictEqual(readBoardCount,1,"Read must NOT poll absent ID2");
 ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"",doSummary:"",mode:"기본 모드"}));
 ctx.armDoTest();
 assert.strictEqual(ctx.plcArmed,false,"Outputs must remain locked during asynchronous fresh scan");
-assert(armingModes&&armingModes[0]==="default","PLC commissioning must request actual configured M0 modes");
+assert(armingModes&&armingModes[0]==="default"&&armingModes[2]===1,"PLC commissioning must arm only physical ID1");
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"ARM_OK · PLC ID 1/2 fresh CRC verified"}));
 assert.strictEqual(ctx.plcArmed,true,"Only confirmed PLC fresh scan may enable DO");
 ctx.tapDo(1,64);
@@ -105,5 +112,23 @@ assert(mainSrc.includes("if(block!=null)throw new java.io.IOException(block)"),"
 ctx.window.nativeMessage(JSON.stringify({type:"plcArm",message:"수동 출력 시험 차단: ID 1 R245=1"}));
 assert.strictEqual(ctx.plcArmed,false,"Failed safety register check must lock DO");
 assert(node("plcArmStatus").textContent.includes("R245=1"),"Block reason must reach visible HMI");
+node("plcBoardCount").value="2";
+ctx.plcBoardCountChanged();
+assert.strictEqual(node("plcMode2").disabled,false,"ID2 mode must enable in two-board mode");
+ctx.readBothPlcs();
+assert.strictEqual(readBoardCount,2,"Two-board mode must retain ID1 and ID2 polling");
+node("plcBoardCount").value="1";
+ctx.plcBoardCountChanged();
+assert.strictEqual(node("plcMode2").disabled,true,"ID2 mode must be disabled when board is absent");
+assert(node("plcBoard2").textContent.includes("시험 제외"),"Absent ID2 status must not be shown as comms failure");
+assert.strictEqual(ctx.plcArmed,false,"Board configuration changes must disarm real outputs");
+ctx.tapDo(2,1);
+assert(node("plcReadLog").textContent.includes("미연결"),"ID2 output must be blocked in single mode");
+const source=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
+assert(source.includes("for(int slave=1;slave<=boardCount;slave++)"),"ID1-only read must not interrogate absent board");
+assert(source.includes("for(int id=1;id<=boardCount;id++)"),"Arming must not require absent ID2");
+assert(source.includes("scanActiveBoards(modes,boardCount)"),"Output guard must scan only physically connected boards");
+assert(source.includes("id<=count")&&source.includes("otherOutputActive"),"Single-active-channel safety must remain");
+assert(source.includes("slave>activeBoards()"),"Absent ID2 output must not be enabled");
 
-console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded 128-channel DO taps and real readback.");
+console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded one-board ID1 test plus optional two-board DO taps and real readback.");
