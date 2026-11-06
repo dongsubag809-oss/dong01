@@ -146,4 +146,25 @@ assert(source.includes("armingTicket!=armSequence"),"Disarmed while PLC scan und
 assert(source.includes("activeBoardCount=1"),"One connected ID1 board must be the native default");
 assert(source.includes("(count==1||lastGoodRead[1]>0)"),"ID2 read required ONLY when two boards connected");
 
+// ID1/ID2 automatic connection must reflect verified responses, not a port-open result.
+assert(html.includes('id="plcLink1"')&&html.includes('id="plcLink2"'),"Live PLC status fields missing");
+assert(html.includes('id="manualRawId"')&&html.includes('id="manualRawChannels"'),"128-channel real manual control panel missing");
+assert(html.includes("DI 01~64 · 실제 수신 상태"),"Manual DI receive indicators missing");
+const autoSrc=fs.readFileSync("app/src/main/java/com/energyblue/househmi/MainActivity.java","utf8");
+const serialSrc=fs.readFileSync("app/src/main/java/com/energyblue/househmi/SerialPort.java","utf8");
+assert(autoSrc.includes("ui.postDelayed(plcAutoPoll,1500)"),"PLC automatic startup monitoring missing");
+assert(autoSrc.includes("for(int id=1;id<=2;id++)"),"Both PLC IDs must be checked independently");
+assert(autoSrc.includes('sendLink(id,true,"CRC 확인'),"Connected status must follow actual Modbus receive");
+assert(autoSrc.includes('sendLink(id,false,message)'),"Offline status must follow Modbus receive failure");
+assert(autoSrc.includes("SerialPort.close(); // Retry port next cycle"),"COM5 reconnect handling missing");
+assert(!autoSrc.includes("autoScanOnce(){\n  ModbusOutput.writeOnce"),"Auto-start must never actuate outputs");
+assert(serialSrc.includes("isOpen()"),"COM5 automatic open status API missing");
+node("manualRawId").value="1";
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:true,detail:"CRC OK"})}));
+ctx.plcReceived(JSON.stringify({id:1,status:"OK",di:"0".repeat(64),do:"0".repeat(64),diSummary:"ON 0/64",doSummary:"ON 0/64",mode:"기본 모드"}));
+assert(node("manualRawChannels").innerHTML.includes("DO64 OFF"),"Real ID1 manual DO64 display missing");
+assert(node("manualRawChannels").innerHTML.includes("DI64 OFF"),"Real ID1 manual DI64 display missing");
+ctx.window.nativeMessage(JSON.stringify({type:"plcLink",message:JSON.stringify({id:1,connected:false,detail:"TIMEOUT"})}));
+assert(!node("manualRawChannels").innerHTML.includes("DO64 OFF"),"Stale DO must disappear after PLC disconnect");
+assert(node("plcLink1").textContent.includes("미연결"),"Disconnected status indicator did not update");
 console.log("PASS: WebView legacy syntax; render; 64-DO registry; menus; COM5 handler; Korean keyboard; user-approved verified APK install; guarded one-board ID1 test plus optional two-board DO taps and real readback.");
