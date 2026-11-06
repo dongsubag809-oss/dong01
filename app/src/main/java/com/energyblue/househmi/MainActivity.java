@@ -36,7 +36,6 @@ public final class MainActivity extends Activity {
  private final long[] lastGoodRead=new long[2];
  private final boolean[] lastM0Shorted=new boolean[2];
  private long outputArmUntil=0;
- private static final long READ_FRESH_MS=10000L;
  private static final long OUTPUT_ARM_MS=60000L;
  private void markRead(int id,boolean shorted){
   synchronized(plcGuard){
