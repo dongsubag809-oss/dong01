@@ -92,6 +92,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/hmi-package"
+          node scripts/export-io-map.js "$RUNNER_TEMP/hmi-package/DO_MAP_128.csv"
+          test -s "$RUNNER_TEMP/hmi-package/DO_MAP_128.csv"
           cp "dist/ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk" "$RUNNER_TEMP/hmi-package/"
           cp "dist/ENERGYBLUE_IXP101H1_${RELEASE_TAG}.apk.sha256" "$RUNNER_TEMP/hmi-package/"
           printf '%s\n' \
@@ -107,7 +109,8 @@ jobs:
             "V4.94: live CRC and R245/R246/R248/R250 scan on DO arming, no 10s pre-approval delay" \
             "V4.95: single N4D4F64 board ID1 default, ID2 not polled, optional 2-board mode" \
             "V4.96: isolated ID1 bench control with independent DO01-64 and session-only manual arm" \
-            "${RELEASE_TAG}: COM5 auto-connect and reconnect, independent ID1/ID2 real DI/DO status, 128-channel manual I/O console; unassigned greenhouse controls remain locked" \
+            "V4.97: automatic COM5 ID1/ID2 link-state monitoring and actual 128-channel raw I/O console" \
+            "${RELEASE_TAG}: historic 24DO per house mapped to ID1/ID2 120 outputs, 8 spare, editable Korean labels, mapped house ON/OFF with commissioning restrictions; bench tests across both IDs" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -122,7 +125,9 @@ jobs:
             "4a. Choose Single-channel mode for ordinary testing, or disconnected-load bench mode only when all loads are physically disconnected from ID1 outputs." \
             "4c. Bench mode is session-only with no 60-second timer and permits independently changing DO01-64. CRC, safety configuration, and actual readback remain active." \
             "5. House motor/pump/light equipment DO mapping, reverse interlocks and DI limits are not confirmed: device-level automatic control remains disabled until real wiring map is verified." \
-            "5a. Raw DO manual outputs use the existing V4.96 confirmation and bench arming requirements. Never connect loads with the bench mode active." \
+            "5a. Actual address plan is in DO_MAP_128.csv: houses 1-5 use 24 DO each in order, ID2 DO57-64 are spare. This is a logical plan, NOT verified physical wiring." \
+            "5b. Korean names in Settings remain editable: old 15 house contact aliases plus separate 128-channel DO label overrides; mapping addresses never change when renamed." \
+            "5c. No-load bench test can activate individual outputs on both present ID1/ID2 boards without modal popups. Do not connect loads while it is armed." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
           (cd "$RUNNER_TEMP/hmi-package" && zip -q "$GITHUB_WORKSPACE/dist/ENERGYBLUE_HMI_${RELEASE_TAG}.zip" *.apk *.sha256 *.txt)
