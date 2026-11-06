@@ -104,7 +104,8 @@ jobs:
             "V4.91: in-app OTA install approval restored after SHA-256 check" \
             "V4.92: guarded ID1/2 manual 128 DO output commissioning; Play Protect warning reported" \
             "V4.93: minimum installer permission aligned with V4.90, Android 7 OTA maintained" \
-            "${RELEASE_TAG}: commissioning arm performs fresh ID1/2 reads and reports R245/R246/R248/R250 safety block reason; no 10-second UI gate" \
+            "V4.94: live CRC and R245/R246/R248/R250 scan on DO arming, no 10s pre-approval delay" \
+            "${RELEASE_TAG}: single N4D4F64 board ID1 default, no ID2 polling, optional 2-board mode, preserve 60s output safety arm" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag may point at default branch; use this commit for source audit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -113,8 +114,9 @@ jobs:
             "2. Android 7 HMI: Search -> Download and verify SHA-256 -> User approves normal Android installer." \
             "2a. Android 8+: Export verified APK to user folder then open in file manager; no installer privilege requested." \
             "3. Android installation approval is required. If Google Play Protect says Harmful app blocked, CANCEL installation; do not disable protection." \
-            "4. N4D4F64: press COM5 open, choose ID1/2 modes, and activate the manual DO test; arming fetches BOTH PLCs automatically." \
-            "4a. DO writes require fresh CRC and R245/R246/R248/R250 safety guard checks; 60 seconds after arming, global one-active-channel rule, 0.5s rescan." \
+            "4. Current setup: one PLC board only at ID1. Select 1 board (default), COM5 OPEN_OK, read ID1, arm outputs (rechecks only ID1), test isolated DO." \
+            "4b. If a second PLC is physically connected later, select 2-board mode and read ID1+ID2. Do not select 2-board mode with only ID1 present." \
+            "4a. Only physically selected board(s) are polled. ON requires CRC and R245/R246/R248/R250 checks; 60s arm, single-active-channel, 0.5s rescan." \
             "5. Motor forward/reverse pairings and limit-switch wiring are NOT verified. Test isolated channels only; hardware emergency stop mandatory." \
             "6. Play Protect harmful-app classification is unresolved. If warning returns, cancel installation; do not bypass." \
             > "$RUNNER_TEMP/hmi-package/README_INSTALL.txt"
