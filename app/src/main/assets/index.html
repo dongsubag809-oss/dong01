@@ -209,6 +209,7 @@ function refreshIp(){el('ip').textContent=window.NativeDiagnostics?window.Native
 function openCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.openCom5(el('com5Path').value,parseInt(el('com5Baud').value,10)):'Android HMI 앱 전용'}
 function closeCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.closeCom5():'Android HMI 앱 전용'}
 var plcDoStates={1:null,2:null};
+var plcDiStates={1:null,2:null};
 var plcLinks={1:false,2:false};
 var plcArmed=false,plcArmDeadline=0,plcCommandBusy=false;
 function renderRawManual(){
@@ -229,6 +230,12 @@ function renderRawManual(){
    'DO'+('0'+n).slice(-2)+' '+(on?'ON':'OFF')+
    (label?'<span style="display:block;font-size:11px;overflow-wrap:anywhere">'+esc(label)+'</span>':'')+'</button>';
  }
+ html+='</div><h3 style="margin-top:16px">DI 01~64 · 실제 수신 상태</h3><div class="plc-ch-grid">';
+ var di=plcDiStates[id]||'';
+ for(var k=1;k<=64;k++){
+  var sensed=di.charAt(k-1)==='1';
+  html+='<div class="plc-ch '+(sensed?'on':'off')+'">DI'+('0'+k).slice(-2)+' '+(di.length===64?(sensed?'ON':'OFF'):'--')+'</div>';
+ }
  target.innerHTML=html+'</div>';
 }
 function plcLinkReceived(raw){
@@ -242,7 +249,7 @@ function plcLinkReceived(raw){
   target.className='plc-link '+(plcLinks[id]?'online':'offline');
   badge.textContent=status;
   el('plcHeaderStatus').textContent='PLC '+(plcLinks[1]?'ID1 연결':'ID1 미연결')+' / '+(plcLinks[2]?'ID2 연결':'ID2 미연결');
-  if(!plcLinks[id])plcDoStates[id]=null;
+  if(!plcLinks[id]){plcDoStates[id]=null;plcDiStates[id]=null;}
   renderRawManual();
  }catch(e){el('plcPortStatus').textContent='연결 상태 표시 오류: '+e.message}
 }
@@ -334,7 +341,7 @@ function plcReceived(value){
   var p=JSON.parse(value),panel=el('plcBoard'+p.id),log=el('plcReadLog');
   if(!panel)return;
   if(p.status!=='OK'){
-   plcDoStates[p.id]=null;
+   plcDoStates[p.id]=null;plcDiStates[p.id]=null;
    panel.textContent='ID '+p.id+' · 통신 실패 · '+p.message+' (현재값 미수신)';
    if(p.id<=selectedPlcCount()){
     plcArmed=false;plcArmDeadline=0;
@@ -345,7 +352,7 @@ function plcReceived(value){
    return;
   }
   if(typeof p.di!=='string'||typeof p.do!=='string'||p.di.length!==64||p.do.length!==64)throw Error('64점 데이터 형식 오류');
-  plcDoStates[p.id]=p.do;
+  plcDoStates[p.id]=p.do;plcDiStates[p.id]=p.di;
   panel.innerHTML='<h3>ID '+p.id+' · CRC 통과 · '+p.mode+'</h3>'+
    '<p class="muted">DI 실제 수신: '+p.diSummary+'</p>'+plcGrid(p.di,'DI 01~64',p.id,false)+
    '<p class="muted">DO 보드 수신: '+p.doSummary+'</p>'+plcGrid(p.do,'DO 01~64 · 터치하면 출력 시험',p.id,true);
