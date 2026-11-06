@@ -210,6 +210,10 @@ public final class MainActivity extends Activity {
    * Output arming expires after 60 seconds and resets on failure.
    */
   @JavascriptInterface public void armManualOutputs(String mode1,String mode2,int boardCount,boolean noLoadBench){
+   // Bench mode has been requested only for one physically disconnected-load ID1 board.
+   if(noLoadBench&&boardCount!=1){
+    emit("plcArm","무부하 다채널 시험은 ID 1 보드 1장 모드에서만 허용합니다.");return;
+   }
    if((boardCount!=1&&boardCount!=2)||!validMode(mode1)||(boardCount==2&&!validMode(mode2))){
     emit("plcArm","수동 출력 승인 실패: 보드 수량 또는 M0 모드 오류");return;
    }
