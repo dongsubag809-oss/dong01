@@ -85,7 +85,7 @@ node("plcSafetyAck").checked=true;
 node("plcMode1").value="default";
 node("plcMode2").value="default";
 node("plcBoardCount").value="1";
-assert.strictEqual(ctx.plcBoardCount(),1,"Single-board default selector read");
+assert.strictEqual(ctx.selectedPlcCount(),1,"Single-board default selector read");
 ctx.readBothPlcs();
 assert.strictEqual(readBoardCount,1,"Read must NOT poll absent ID2");
 node("plcSafetyAck").checked=true;
