@@ -192,11 +192,11 @@ function openCom5(){el('out').textContent=window.NativeDiagnostics?window.Native
 function closeCom5(){el('out').textContent=window.NativeDiagnostics?window.NativeDiagnostics.closeCom5():'Android HMI 앱 전용'}
 var plcDoStates={1:null,2:null};
 var plcArmed=false,plcArmDeadline=0,plcCommandBusy=false;
-function plcBoardCount(){
+function selectedPlcCount(){
  return el('plcBoardCount').value==='2'?2:1;
 }
 function plcBoardCountChanged(){
- var count=plcBoardCount();
+ var count=selectedPlcCount();
  disarmDoTest();
  plcDoStates[1]=null;plcDoStates[2]=null;
  el('plcMode2').disabled=count===1;
@@ -211,9 +211,9 @@ function armDoTest(){
  if(!window.confirm('PLC 실제 출력을 시험 모드로 활성화할까요?\\n정·역 모터와 리미트 결선이 미확인된 채널은 절대 ON하지 마세요.'))return;
  if(!window.NativeDiagnostics||!window.NativeDiagnostics.armManualOutputs){msg.textContent='지원하지 않는 APK입니다.';return;}
  plcArmed=false;plcArmDeadline=0;
- msg.textContent='PLC ID 1'+(plcBoardCount()===2?'·2':'')+' 실제 수신/안전 설정 재검사 중 · 아직 승인되지 않음';
+ msg.textContent='PLC ID 1'+(selectedPlcCount()===2?'·2':'')+' 실제 수신/안전 설정 재검사 중 · 아직 승인되지 않음';
  try{
-  window.NativeDiagnostics.armManualOutputs(el('plcMode1').value,el('plcMode2').value,plcBoardCount());
+  window.NativeDiagnostics.armManualOutputs(el('plcMode1').value,el('plcMode2').value,selectedPlcCount());
  }catch(e){msg.textContent='출력 시험 승인 요청 오류: '+e.message;}
 }
 function disarmDoTest(){
@@ -223,7 +223,7 @@ function disarmDoTest(){
 }
 function tapDo(id,ch){
  var state=plcDoStates[id],msg=el('plcReadLog');
- if(id>plcBoardCount()){msg.textContent='ID '+id+' · 미연결: 선택한 보드 수량 밖의 출력은 차단됩니다.';return;}
+ if(id>selectedPlcCount()){msg.textContent='ID '+id+' · 미연결: 선택한 보드 수량 밖의 출력은 차단됩니다.';return;}
  if(!state||state.length!==64){msg.textContent='ID '+id+' DO 상태가 미수신입니다. 먼저 읽기 실행';return;}
  if(!plcArmed||Date.now()>plcArmDeadline){plcArmed=false;msg.textContent='출력 잠금: 상단 안전 확인 체크 → 수동 DO 시험 활성화 → PLC 재조회 승인(ARM_OK)을 먼저 확인하세요.';return;}
  if(plcCommandBusy){msg.textContent='이전 출력 명령 처리 중입니다.';return;}
@@ -238,7 +238,7 @@ function tapDo(id,ch){
  window.NativeDiagnostics.setDoOutput(id,ch,on,mode);
 }
 function readBothPlcs(){
- var count=plcBoardCount();
+ var count=selectedPlcCount();
  disarmDoTest();
  plcDoStates[1]=null;plcDoStates[2]=null;
  el('plcReadLog').textContent='PLC ID 1'+(count===2?'·2':'')+' 실제 응답 확인 중 · 타임아웃 최대 약 '+(count===2?'5':'3')+'초';
@@ -261,7 +261,7 @@ function plcReceived(value){
  try{
   var p=JSON.parse(value),panel=el('plcBoard'+p.id),log=el('plcReadLog');
   if(!panel)return;
-  if(p.id>plcBoardCount())return;
+  if(p.id>selectedPlcCount())return;
   if(p.status!=='OK'){
    plcDoStates[p.id]=null;plcArmed=false;plcArmDeadline=0;el('plcArmStatus').textContent='PLC 읽기 오류 · 시험 자동 잠금';
    panel.textContent='ID '+p.id+' · 통신 실패 · '+p.message+' (현재값 미수신)';
