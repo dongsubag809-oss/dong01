@@ -96,9 +96,11 @@ JNIEXPORT jbyteArray JNICALL Java_com_energyblue_househmi_SerialPort_nativeReadE
  (*env)->GetByteArrayRegion(env,request,0,8,bytes);
  unsigned char *q=(unsigned char*)bytes;
  int addr=(q[2]<<8)|q[3];
- if((q[0]!=1&&q[0]!=2)||q[1]!=3||q[4]!=0||q[5]!=4||
-    (addr!=112&&addr!=192&&addr!=128&&addr!=144)){
-  raise_io(env,"READ_ONLY_FC03_ID_1_2_ENFORCED");return NULL;
+ int count=(q[4]<<8)|q[5];
+ if((q[0]!=1&&q[0]!=2)||q[1]!=3||
+    !((count==4&&(addr==112||addr==192||addr==128||addr==144||addr==245))
+      ||(count==1&&addr==250))){
+  raise_io(env,"FC03_REGISTER_WHITELIST_ENFORCED");return NULL;
  }
  if(timeout_ms<100||timeout_ms>5000){raise_io(env,"INVALID_TIMEOUT");return NULL;}
  int64_t deadline=now_msec()+timeout_ms;
@@ -123,8 +125,61 @@ JNIEXPORT jbyteArray JNICALL Java_com_energyblue_househmi_SerialPort_nativeReadE
   else if(n<0){raise_io(env,"SERIAL_READ_FAILED");return NULL;}
   if(received>=3&&need==3){
    if(response[1]==(unsigned char)0x83)need=5;
-   else if(response[1]==3&&response[2]==8)need=13;
+   else if(response[1]==3&&response[2]==count*2)need=5+count*2;
    else{raise_io(env,"UNEXPECTED_RESPONSE_HEADER");return NULL;}
+  }
+ }
+ jbyteArray out=(*env)->NewByteArray(env,(jsize)need);
+ if(out)(*env)->SetByteArrayRegion(env,out,0,(jsize)need,(jbyte*)response);
+ return out;
+}
+
+
+/* Manual N4D4F64 commissioning write. Validate against legacy command 1/2
+ * single-channel frames in native and Java, then return PLC echo unchanged.
+ * Never repeat a write after a timeout: actuation status is then UNKNOWN.
+ */
+JNIEXPORT jbyteArray JNICALL Java_com_energyblue_househmi_SerialPort_nativeOutputExchange(
+ JNIEnv *env,jclass cls,jbyteArray request,jint timeout_ms){
+ (void)cls;
+ if(fd<0){raise_io(env,"COM5_NOT_OPEN");return NULL;}
+ if(!request||(*env)->GetArrayLength(env,request)!=8){
+  raise_io(env,"INVALID_OUTPUT_LENGTH");return NULL;
+ }
+ jbyte bytes[8];
+ (*env)->GetByteArrayRegion(env,request,0,8,bytes);
+ unsigned char *q=(unsigned char*)bytes;
+ int address=(q[2]<<8)|q[3],value=(q[4]<<8)|q[5],fc=q[1];
+ if((q[0]!=1&&q[0]!=2)||address>63||
+   !((fc==6&&(value==0x0100||value==0x0200))||
+     (fc==5&&(value==0xFF00||value==0)))){
+  raise_io(env,"DISALLOWED_N4D4F64_OUTPUT_FRAME");return NULL;
+ }
+ if(timeout_ms<100||timeout_ms>5000){raise_io(env,"INVALID_WRITE_TIMEOUT");return NULL;}
+ int64_t deadline=now_msec()+timeout_ms;
+ if(tcflush(fd,TCIFLUSH)!=0){raise_io(env,"OUTPUT_RX_FLUSH_FAILED");return NULL;}
+ size_t sent=0;
+ while(sent<8){
+  int ok=await_fd(fd,POLLOUT,deadline);
+  if(ok<=0){raise_io(env,ok==0?"OUTPUT_TX_TIMEOUT":"OUTPUT_TX_POLL_ERROR");return NULL;}
+  ssize_t n=write(fd,q+sent,8-sent);
+  if(n>0){sent+=(size_t)n;continue;}
+  if(n<0&&(errno==EINTR||errno==EAGAIN||errno==EWOULDBLOCK))continue;
+  raise_io(env,"OUTPUT_WRITE_FAILED");return NULL;
+ }
+ if(tcdrain(fd)!=0){raise_io(env,"OUTPUT_TRANSMIT_DRAIN_FAILED");return NULL;}
+ unsigned char response[8]={0};size_t got=0,need=2;
+ while(got<need){
+  int ok=await_fd(fd,POLLIN,deadline);
+  if(ok<=0){raise_io(env,ok==0?"OUTPUT_ECHO_TIMEOUT":"OUTPUT_ECHO_POLL_ERROR");return NULL;}
+  ssize_t n=read(fd,response+got,need-got);
+  if(n>0){got+=(size_t)n;}
+  else if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR))continue;
+  else if(n<0){raise_io(env,"OUTPUT_READ_FAILED");return NULL;}
+  if(got==2&&need==2){
+   if(response[1]==(unsigned char)(fc|0x80))need=5;
+   else if(response[1]==fc)need=8;
+   else{raise_io(env,"OUTPUT_RESPONSE_FUNC_MISMATCH");return NULL;}
   }
  }
  jbyteArray out=(*env)->NewByteArray(env,(jsize)need);
