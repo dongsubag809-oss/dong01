@@ -4,6 +4,7 @@ const nodes={},calls=[];function node(id){return nodes[id]||(nodes[id]={value:''
 let rows=[1,2,3,4,5].map(h=>({house:h,config:{house:h,path:'/dev/ttyS6',baud:9600,id:h,fc:3,map:'h0t1',verified:true,enabled:true},connected:true,registered:true,temperature:20+h/10,humidity:50+h/10,receivedAt:Date.now()}));
 let data={...rows[0],houses:rows,selected:1,setup:0,pending:null,searching:false,devices:['/dev/ttyS6','/dev/ttyS7']};
 const bridge={sensorInfo:()=>JSON.stringify(data)};for(const name of ['configureSensor','selectSensorHouse','beginSensorSetup','searchSensor','cancelSensorSearch','stopSensor','changeSensorId','changeSensorBaud','verifySensorChange','restoreSensorOld','finishSensorSetup','leaveSensorSetup','confirmSensorMap'])bridge[name]=function(){calls.push([name,...arguments]);};
+Object.values(bridge).forEach(fn=>Object.defineProperty(fn,'apply',{value:undefined}));
 const ctx=vm.createContext({window:{NativeDiagnostics:bridge},document:{getElementById:node},setInterval(){},Date,JSON});vm.runInContext(source,ctx);const api=ctx.window.EBSensor;api.init();
 for(let h=1;h<=5;h++)assert.equal(node('houseTemperature'+h).textContent,(20+h/10).toFixed(1)+' °C');assert.equal(node('dashSensor').textContent,'COM6 센서 5/5동 수신');assert(node('sensorId').disabled);
 api.selectHouse(5);assert(calls.some(c=>c[0]==='selectSensorHouse'&&c[1]===5));data={...data,...rows[4],selected:5};api.receive(data);api.begin();assert(calls.some(c=>c[0]==='beginSensorSetup'&&c[1]===5));

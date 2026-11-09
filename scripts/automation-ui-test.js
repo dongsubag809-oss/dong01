@@ -6,6 +6,7 @@ const nodes={};function node(id){if(!nodes[id])nodes[id]={id,value:'',textConten
 const calls=[];
 const doc={getElementById:node,createElement:()=>node('new-'+Object.keys(nodes).length),body:{appendChild(){}}};
 const context=vm.createContext({window:{NativeDiagnostics:{automationSnapshot:function(){calls.push(['snapshot',Array.from(arguments)]);},saveAutomationRule:function(){calls.push(['save',Array.from(arguments)]);},copyAutomationHouse:function(){calls.push(['copy',Array.from(arguments)]);},startAutomation:()=>calls.push(['start']),stopAutomation:()=>calls.push(['stop'])}},document:doc,localStorage:{getItem:()=>null,setItem:(k,v)=>calls.push(['pref',k,v])},setInterval(){},Date,JSON,console,isFinite,names:['1동','2동','3동','4동','5동']});
+Object.values(context.window.NativeDiagnostics).forEach(fn=>Object.defineProperty(fn,'apply',{value:undefined}));
 vm.runInContext(source,context);const api=context.window.EBAutomation;api.init();
 assert(calls.some(x=>x[0]==='snapshot'),'Native history must be requested asynchronously');
 assert(node('automationRoot').innerHTML.includes('자동운전 시작')&&node('automationRoot').innerHTML.includes('장비 설정 저장'),'Functional automation controls missing');

@@ -14,7 +14,19 @@ window.EBAutomation=(function(){
  function timeText(minute){return ('0'+Math.floor(minute/60)).slice(-2)+':'+('0'+minute%60).slice(-2);}
  function kst(ts,dateOnly){var d=new Date(ts+9*3600000);return (dateOnly?(''+(d.getUTCMonth()+1)+'/'+d.getUTCDate()):('0'+d.getUTCHours()).slice(-2)+':'+('0'+d.getUTCMinutes()).slice(-2));}
  function fullTime(ts){return kst(ts,true)+' '+kst(ts,false);}
- function host(name,args){if(!window.NativeDiagnostics||typeof window.NativeDiagnostics[name]!=='function'){notice('Android HMI에서 설정 저장과 실제 이력 조회가 가능합니다.',true);return false;}window.NativeDiagnostics[name].apply(window.NativeDiagnostics,args||[]);return true;}
+ function host(name,args){
+  var h=window.NativeDiagnostics,a=args||[];
+  if(!h||typeof h[name]!=='function'){notice('Android HMI에서 실행하세요.',true);return false;}
+  try{switch(a.length){
+   case 0:h[name]();break;case 1:h[name](a[0]);break;case 2:h[name](a[0],a[1]);break;
+   case 3:h[name](a[0],a[1],a[2]);break;case 4:h[name](a[0],a[1],a[2],a[3]);break;
+   case 5:h[name](a[0],a[1],a[2],a[3],a[4]);break;default:throw new Error('지원하지 않는 호출 인수 개수');
+  }return true;}catch(error){
+   var detail='자동제어 연결 오류 ['+name+']: '+(error.message||error);
+   notice(detail,true);
+   if(window.reportHmiFault)window.reportHmiFault(detail,'automation.js',0,0,error.stack||'');return false;
+  }
+ }
  function notice(text,bad){var node=e('auNotice');if(node){node.textContent=text;node.className='auto-notice'+(bad?' error':'');}}
  function changed(){ui.dirty++;e('auDirty').textContent='저장하지 않은 변경 있음';}
  function numberField(id,label,unit){return '<div><label for="'+id+'">'+label+' <span class="auto-muted">'+unit+'</span></label><div class="auto-number"><button type="button" onclick="EBAutomation.step(\''+id+'\',-1)">−</button><input id="'+id+'" readonly inputmode="decimal" placeholder="입력" onclick="EBAutomation.number(\''+id+'\')"><button type="button" onclick="EBAutomation.step(\''+id+'\',1)">+</button></div></div>';}

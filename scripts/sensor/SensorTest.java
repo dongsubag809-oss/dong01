@@ -67,14 +67,25 @@ public final class SensorTest {
    c.changeId(5,true);idle(c);check(p.writes==1,"pending suppresses repeated writes");
    c.verifyChange();idle(c);check(!state(active.get()).isNull("pending")&&state(active.get()).optBoolean("oldConfirmed"),"before power-cycle only old settings respond");check(p.writes==1,"verification does not write");
    d.power();c.verifyChange();idle(c);check(state(active.get()).isNull("pending")&&state(active.get()).getJSONObject("config").getInt("id")==5,"new ID readback confirmed");
-   c.finishSetup();until(()->state(active.get()).optInt("setup")==0);until(()->h.received[4].get()>count);check(h.t[4]==20.5,"ID5 recorded to house5");check(!state(active.get()).getJSONArray("houses").getJSONObject(0).optBoolean("connected"),"house1 not populated by ID5");
-   c.beginSetup(5);until(()->state(active.get()).optInt("setup")==5);configure(c,5,5,9600);c.changeBaud(4800,true);idle(c);check(p.writes==2,"baud write exactly once");d.power();c.verifyChange();idle(c);check(state(active.get()).getJSONObject("config").getInt("baud")==4800,"new baud confirmed");c.finishSetup();until(()->state(active.get()).optInt("setup")==0);
+   until(()->state(active.get()).optInt("setup")==0);until(()->h.received[4].get()>count);check(h.t[4]==20.5,"ID5 recorded to house5");check(!state(active.get()).getJSONArray("houses").getJSONObject(0).optBoolean("connected"),"house1 not populated by ID5");
+   c.editSetup(5);until(()->state(active.get()).optInt("setup")==5);c.changeBaud(4800,true);idle(c);check(p.writes==2,"baud write exactly once");d.power();c.verifyChange();idle(c);check(state(active.get()).getJSONObject("config").getInt("baud")==4800,"new baud confirmed");until(()->state(active.get()).optInt("setup")==0);
    c.beginSetup(4);until(()->state(active.get()).optInt("setup")==4);p.devices.clear();Device u=new Device(1);p.devices.add(u);p.timeout=true;c.changeId(4,true);idle(c);check(state(active.get()).getJSONObject("pending").getString("phase").equals("UNKNOWN"),"timeout retained as unknown");int writes=p.writes;String saved=h.config;c.close();
    c=new SensorController(h,p,saved);active.set(c);final SensorController resumed=c;Thread.sleep(1100);check(p.writes==writes&&!state(active.get()).isNull("pending"),"restart never repeats unknown write");u.power();p.timeout=false;c.verifyChange();idle(c);check(state(active.get()).isNull("pending"),"restart pending readback recovers");
    c.leaveSetup();until(()->state(resumed).optInt("setup")==0);
    c.beginSetup(2);until(()->state(resumed).optInt("setup")==2);p.devices.clear();p.devices.add(new Device(1));p.noEffect=true;c.changeId(2,true);idle(c);c.verifyChange();idle(c);check(state(active.get()).optBoolean("oldConfirmed"),"failed new setting recognizes old response");c.restoreOld();until(()->state(resumed).isNull("pending"));check(p.writes==writes+1,"restore performs no extra write");c.finishSetup();Thread.sleep(80);check(state(active.get()).optInt("setup")==2,"cannot register ID1 to house2");
    p.delay=20;c.search();Thread.sleep(60);c.cancelSearch();idle(c);check(p.writes==writes+1,"search/cancel read only");
   }finally{c.close();}
+  Host id2Host=new Host();Port id2Port=new Port(id2Host);Device device=new Device(1);id2Port.devices.add(device);
+  SensorController id2=new SensorController(id2Host,id2Port,"{}");
+  try{
+   id2.beginSetup(2);until(()->state(id2).optInt("setup")==2);id2.changeId(2,true);idle(id2);
+   check(!state(id2).isNull("pending")&&id2Host.received[1].get()==0,"ID echo alone cannot show house2 measurement");
+   device.power();until(()->state(id2).optInt("setup")==0&&state(id2).isNull("pending"));until(()->id2Host.received[1].get()>0);
+   check(id2Host.t[1]==20.2&&id2Port.writes==1,"ID2 auto-registers actual house2 without extra registration click or write");
+   Thread.sleep(1200);check(state(id2).optString("tx").startsWith("02 03")&&!state(id2).optString("rx").isEmpty()&&state(id2).optString("error").isEmpty(),"selected ID2 diagnostics independent of missing ID5");
+   JSONObject legacy=new JSONObject(id2Host.config).put("schema",2).put("setup",2);id2.close();
+   SensorController restored=new SensorController(id2Host,id2Port,legacy.toString());try{until(()->state(restored).optInt("setup")==0);check(id2Port.writes==1,"V5.10 registration wait recovers with reads only");}finally{restored.close();}
+  }finally{id2.close();}
   System.out.println("PASS: "+checks+" sensor checks: supplied CRC vectors, fixed ID1..5 routing, registration isolation, collision guards, durable single writes, power-cycle/readback, timeout/restart recovery, no blind retries, baud changes and cancellation");
  }
 }

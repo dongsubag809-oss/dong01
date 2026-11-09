@@ -35,7 +35,9 @@ public final class SensorController implements AutoCloseable {
  private final long[] receivedAt=new long[5],receivedMono=new long[5];
  private final String[] statuses={"수신 대기","수신 대기","수신 대기","수신 대기","수신 대기"};
  private String tx="",rx="",error="",message="COM6 ID1~5 / 1~5동 수신 준비";
- private boolean oldConfirmed=false;
+ private boolean oldConfirmed=false,resumeRegistration=false;
+ private long lastAutomaticVerify=0;
+ private final String[] houseTx={"","","","",""},houseRx={"","","","",""},houseError={"","","","",""};
  public SensorController(Host host,Port port,String saved){
   this.host=host;this.port=port;
   try{
@@ -51,7 +53,8 @@ public final class SensorController implements AutoCloseable {
    if(setup<0||setup>5)setup=0;
    if(list!=null&&setup>0)configs[setup-1]=normalize(list.getJSONObject(setup-1),setup);
    pending=root.optJSONObject("pending");
-   if(pending!=null){validatePending(pending);setup=pending.getInt("house");selected=setup;message="이전 설정 변경 보류 · 센서 전원 재인가 후 변경 결과 확인 필요";}
+   if(pending!=null){validatePending(pending);setup=pending.getInt("house");selected=setup;message="이전 변경 보류 · 센서 전원 재인가 후 새 ID/속도를 자동 확인합니다.";}
+   else if(setup>0&&configs[setup-1].optInt("id")==setup){resumeRegistration=true;message="이전 등록 대기 복구 · 실제 수신 2회 후 자동 등록";}
   }catch(Exception ex){
    for(int h=1;h<=5;h++)try{configs[h-1]=normalize(new JSONObject(),h);}catch(Exception fatal){throw new IllegalArgumentException(fatal);}
    setup=0;pending=null;message="저장 설정 형식 오류 · ID1~5 기본 읽기 설정으로 표시: "+ex.getMessage();
@@ -78,7 +81,7 @@ public final class SensorController implements AutoCloseable {
  private JSONObject[] copyConfigs()throws Exception{JSONObject[] c=new JSONObject[5];for(int i=0;i<5;i++)c[i]=new JSONObject(configs[i].toString());return c;}
  private boolean save(JSONObject[] next,JSONObject change,int setupHouse)throws Exception{
   JSONArray a=new JSONArray();for(JSONObject c:next)a.put(c);
-  JSONObject root=new JSONObject().put("schema",2).put("selected",selected).put("setup",setupHouse).put("sensors",a).put("pending",change==null?JSONObject.NULL:change);
+  JSONObject root=new JSONObject().put("schema",3).put("selected",selected).put("setup",setupHouse).put("sensors",a).put("pending",change==null?JSONObject.NULL:change);
   // Synchronous durable commit occurs only on this worker, before any FC06 transmission.
   if(!host.persist(root.toString())){notice("설정 저장 실패 · 추가 작업 중지, 현재 보류 상태 유지");return false;}
   synchronized(SensorSerial.class){configs=next;pending=change;setup=setupHouse;}
@@ -99,7 +102,8 @@ public final class SensorController implements AutoCloseable {
     if(SensorSerial.samePath(c.optString("path"),host.plcPath()))throw new IOException("COM5 PLC 경로 중복 차단");
     JSONObject[] next=copyConfigs();next[house-1]=c;if(!save(next,null,setup))return;
    }
-   selected=house;clear(house);closePort();notice("수신 설정 저장 · ID와 동 번호 고정 연결");
+   selected=house;clear(house);closePort();resumeRegistration=setup==house&&c.optInt("id")==house;
+   notice(resumeRegistration?"수신 설정 저장 · 실제 응답 2회 후 대시보드 자동 연결":"수신 설정 저장 · 센서 주소 자체 변경은 ID 변경 버튼을 사용하세요.");
   }catch(Exception ex){notice("설정 차단: "+ex.getMessage());}});
  }
  public void stop(){if(closed)return;submit(()->{try{if(pending!=null||busy.get())throw new IOException("변경 확인/검색 종료 후 중지하세요.");JSONObject[] c=copyConfigs();c[selected-1].put("enabled",false);if(save(c,null,setup)){clear(selected);notice("선택 동 감시 중지");}}catch(Exception ex){notice(ex.getMessage());}});}
@@ -107,14 +111,24 @@ public final class SensorController implements AutoCloseable {
   try{
    if(pending!=null||busy.get()||setup>0)throw new IOException("진행 중인 센서 설정을 먼저 완료하세요.");
    JSONObject[] next=copyConfigs();next[house-1].put("id",1).put("baud",9600).put("fc",3).put("map","h0t1").put("verified",true);
-   selected=house;if(!save(next,null,house))return;clearAll();closePort();notice("신규 "+house+"동 설정 · 다른 센서를 분리하고 새 센서 한 대만 연결하세요. 임시 ID 값은 동 이력에 기록하지 않습니다.");
+   selected=house;if(!save(next,null,house))return;resumeRegistration=false;clearAll();closePort();notice("신규 "+house+"동 설정 · 다른 센서를 분리하고 새 센서 한 대만 연결하세요. 임시 ID 값은 동 이력에 기록하지 않습니다.");
   }catch(Exception ex){notice("신규 설정 차단: "+ex.getMessage());}
  });}
+ public void editSetup(int house){if(house<1||house>5||closed)return;generation.incrementAndGet();submit(()->{try{
+  if(pending!=null||busy.get()||setup>0)throw new IOException("진행 중인 변경을 먼저 확인하세요.");
+  selected=house;if(!save(copyConfigs(),null,house))return;resumeRegistration=false;clearAll();closePort();notice("등록 센서 "+house+"동 수정 · 현재 ID/속도 유지 · 센서 한 대만 연결하세요.");
+ }catch(Exception ex){notice("수정 차단: "+ex.getMessage());}});}
+ private boolean completeRegistration(int house,JSONObject config,SensorProtocol.Reading reading)throws Exception{
+  if(config.optInt("id")!=house||!config.optBoolean("verified"))throw new IOException("동 번호/수신맵 확인 필요");
+  JSONObject[] next=copyConfigs();next[house-1]=new JSONObject(config.toString()).put("enabled",true);
+  if(!save(next,null,0))return false;
+  resumeRegistration=false;oldConfirmed=false;selected=house;accept(house,reading);
+  notice("ID "+house+" → "+house+"동 자동 등록 완료 · 대시보드·이력 연결 · 전체 감시 재개");return true;
+ }
  public void finishSetup(){submit(()->{try{
   if(pending!=null||busy.get()||setup==0)throw new IOException("보류 변경을 먼저 확인하세요.");int h=setup;JSONObject c=configs[h-1];
   if(c.optInt("id")!=h||!fresh(h))throw new IOException("ID를 동 번호로 설정하고 새 ID의 실제 응답을 먼저 확인하세요.");
-  JSONObject[] next=copyConfigs();next[h-1].put("enabled",true);
-  if(!save(next,null,0))return;notice("ID "+h+" → "+h+"동 등록 완료 · 전체 감시 재개");
+  completeRegistration(h,c,readings[h-1]);
  }catch(Exception ex){notice("등록 차단: "+ex.getMessage());}});}
  public void leaveSetup(){submit(()->{try{
   if(pending!=null||busy.get())throw new IOException("이미 전송된 설정의 새/기존 응답을 먼저 확인하세요.");if(setup==0)return;
@@ -154,15 +168,24 @@ public final class SensorController implements AutoCloseable {
  private void closePort(){port.close();openedPath="";openedBaud=0;}
  private SensorProtocol.Reading read(JSONObject c,int id,int baud,int timeout)throws IOException{
   ensureOpen(c.optString("path"),baud);tx=SensorProtocol.hex(SensorProtocol.request(id,c.optInt("fc"),c.optString("map")));rx="";
-  byte[] b=port.read(id,c.optInt("fc"),c.optString("map"),timeout);rx=SensorProtocol.hex(b);
-  return SensorProtocol.parse(b,id,c.optInt("fc"),c.optString("map"));
+  int index=c.optInt("house",selected)-1;houseTx[index]=tx;houseRx[index]="";
+  try{byte[] b=port.read(id,c.optInt("fc"),c.optString("map"),timeout);rx=SensorProtocol.hex(b);houseRx[index]=rx;
+   SensorProtocol.Reading r=SensorProtocol.parse(b,id,c.optInt("fc"),c.optString("map"));houseError[index]="";return r;
+  }catch(IOException ex){houseError[index]=ex.getMessage();throw ex;}
  }
  private void poll(){
-  if(closed||busy.get()||pending!=null)return;long token=generation.get();
+  if(closed||busy.get())return;
+  if(pending!=null){if(mono()-lastAutomaticVerify>=3000){lastAutomaticVerify=mono();verifyChange(false);}return;}
+  long token=generation.get();
   for(int h=1;h<=5;h++){
    if(cancelled(token))return;JSONObject c=configs[h-1];
    if(setup>0&&setup!=h)continue;if(setup==0&&!c.optBoolean("enabled")){clear(h);continue;}
-   try{SensorProtocol.Reading r=read(c,c.optInt("id"),c.optInt("baud"),700);if(cancelled(token))return;accept(h,r);}
+   try{SensorProtocol.Reading r=read(c,c.optInt("id"),c.optInt("baud"),700);if(cancelled(token))return;
+    if(resumeRegistration&&setup==h&&c.optInt("id")==h){
+     java.util.concurrent.locks.LockSupport.parkNanos(100000000L);r=read(c,h,c.optInt("baud"),700);if(cancelled(token))return;
+     if(completeRegistration(h,c,r))return;
+    }else accept(h,r);
+   }
    catch(Exception ex){if(cancelled(token))return;clear(h);statuses[h-1]="미수신 · "+ex.getMessage();error=ex.getMessage();closePort();}
   }
   publish();
@@ -207,18 +230,19 @@ public final class SensorController implements AutoCloseable {
   }catch(Exception ex){notice("설정 쓰기 차단: "+ex.getMessage());}
   finally{busy.set(false);publish();}});
  }
- public void verifyChange(){
+ public void verifyChange(){verifyChange(true);}
+ private void verifyChange(boolean manual){
   if(closed||!busy.compareAndSet(false,true))return;submit(()->{
    try{
-    if(pending==null)throw new IOException("확인할 보류 변경이 없습니다.");validatePending(pending);JSONObject next=pending.getJSONObject("next"),old=pending.getJSONObject("old");int h=pending.getInt("house");clearAll();oldConfirmed=false;
+    if(pending==null)throw new IOException("확인할 보류 변경이 없습니다.");validatePending(pending);JSONObject next=pending.getJSONObject("next"),old=pending.getJSONObject("old");int h=pending.getInt("house");clearAll();if(manual)oldConfirmed=false;
     try{
      SensorProtocol.Reading r=read(next,next.getInt("id"),next.getInt("baud"),1000);
      java.util.concurrent.locks.LockSupport.parkNanos(100000000L);
      r=read(next,next.getInt("id"),next.getInt("baud"),1000);
-     JSONObject[] c=copyConfigs();c[h-1]=new JSONObject(next.toString());if(!save(c,null,h))return;
-     accept(h,r);notice("변경한 ID·속도에서 2회 실제 수신 확인 · "+h+"동 등록·전체 감시 재개를 누르세요.");
+     completeRegistration(h,next,r);
     }catch(IOException ex){
-     error=ex.getMessage();try{read(old,old.getInt("id"),old.getInt("baud"),1000);oldConfirmed=true;notice("새 설정 응답 없음 · 기존 설정에서 응답 확인. 전원 재인가 후 재확인하거나 기존 설정 복구를 선택하세요.");}
+     error=ex.getMessage();if(!manual){notice("새 ID/속도 응답 대기 · 센서 전원을 껐다 켜세요. 쓰기는 반복하지 않습니다.");return;}
+     try{read(old,old.getInt("id"),old.getInt("baud"),1000);oldConfirmed=true;notice("새 설정 응답 없음 · 기존 설정에서 응답 확인. 전원 재인가 후 재확인하거나 기존 설정 복구를 선택하세요.");}
      catch(IOException oldError){notice("새 설정·기존 설정 모두 미수신 · 전원/배선 확인 후 다시 결과 확인. 쓰기는 재전송하지 않습니다.");}
     }
    }catch(Exception ex){notice("변경 확인 오류: "+ex.getMessage());}
@@ -228,7 +252,7 @@ public final class SensorController implements AutoCloseable {
  public void restoreOld(){submit(()->{try{
   if(pending==null||busy.get()||!oldConfirmed)throw new IOException("변경 결과 확인에서 기존 설정 응답을 먼저 확인하세요.");
   int h=pending.getInt("house");JSONObject old=pending.getJSONObject("old");SensorProtocol.Reading r=read(old,old.getInt("id"),old.getInt("baud"),1000);
-  JSONObject[] c=copyConfigs();c[h-1]=new JSONObject(old.toString());if(save(c,null,h)){accept(h,r);oldConfirmed=false;notice("기존 설정의 실제 응답으로 복구 · 추가 쓰기 없음");}
+  JSONObject[] c=copyConfigs();c[h-1]=new JSONObject(old.toString());if(save(c,null,h)){resumeRegistration=false;accept(h,r);oldConfirmed=false;notice("기존 설정의 실제 응답으로 복구 · 추가 쓰기 없음");}
  }catch(Exception ex){notice("기존 설정 복구 차단: "+ex.getMessage());}});}
  private void notice(String text){message=text;publish();}
  private void publish(){if(closed)return;try{
@@ -238,7 +262,7 @@ public final class SensorController implements AutoCloseable {
     .put("temperature",live?r.temperature:JSONObject.NULL).put("humidity",live?r.humidity:JSONObject.NULL).put("receivedAt",live?receivedAt[h-1]:0).put("status",statuses[h-1]));
   }
   JSONObject s=new JSONObject(houses.getJSONObject(selected-1).toString()).put("selected",selected).put("houses",houses).put("setup",setup).put("pending",pending==null?JSONObject.NULL:new JSONObject(pending.toString())).put("oldConfirmed",oldConfirmed)
-   .put("searching",busy.get()).put("tx",tx).put("rx",rx).put("error",error).put("message",message);
+   .put("searching",busy.get()).put("tx",pending!=null||busy.get()?tx:houseTx[selected-1]).put("rx",pending!=null||busy.get()?rx:houseRx[selected-1]).put("error",pending!=null||busy.get()?error:houseError[selected-1]).put("message",message);
   state=s;host.emit(s.toString());
  }catch(Exception ignored){}}
  public String snapshot(){try{return new JSONObject(state.toString()).put("searching",busy.get()).toString();}catch(Exception ex){return state.toString();}}

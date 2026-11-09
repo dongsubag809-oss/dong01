@@ -31,6 +31,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
  private WebView browser;
+ private boolean pageReady=false;
+ private final java.util.ArrayDeque<String> pendingUiEvents=new java.util.ArrayDeque<>();
  private AutomationController automation;
  private SensorController sensor;
  private volatile boolean automationArmRequested=false;
@@ -353,12 +355,29 @@ public final class MainActivity extends Activity {
   getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
   browser=new WebView(this);
   browser.setWebViewClient(new WebViewClient(){
+   @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){pageReady=false;}
+   @Override public void onPageFinished(WebView view,String url){
+    if(destroyed||!"file:///android_asset/index.html".equals(url))return;
+    view.evaluateJavascript("typeof window.nativeMessage==='function'",result->{
+     if(destroyed||browser==null||!"true".equals(result))return;pageReady=true;
+     while(!pendingUiEvents.isEmpty())deliverUiEvent(pendingUiEvents.removeFirst());
+    });
+   }
    @Override public boolean shouldOverrideUrlLoading(WebView view,String url){return !"file:///android_asset/index.html".equals(url);}
    @Override public boolean shouldOverrideUrlLoading(WebView view,android.webkit.WebResourceRequest request){
     return !"file:///android_asset/index.html".equals(request.getUrl().toString());
    }
   });
-  browser.setWebChromeClient(new WebChromeClient());
+  browser.setWebChromeClient(new WebChromeClient(){
+   @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message){
+    if(message.messageLevel()==android.webkit.ConsoleMessage.MessageLevel.ERROR){
+     android.util.Log.e("ENERGYBLUE-HMI",message.sourceId()+":"+message.lineNumber()+" "+message.message());
+     final String js="if(window.reportHmiFault)window.reportHmiFault("+JSONObject.quote(message.message())+","+JSONObject.quote(message.sourceId()==null?"":message.sourceId())+","+message.lineNumber()+",0,'');";
+     ui.post(()->{if(!destroyed&&browser!=null)browser.evaluateJavascript(js,null);});
+    }
+    return true;
+   }
+  });
   browser.getSettings().setJavaScriptEnabled(true);
   browser.getSettings().setDomStorageEnabled(true);
   browser.getSettings().setAllowFileAccess(true);
@@ -413,8 +432,14 @@ public final class MainActivity extends Activity {
   ui.post(()->{if(destroyed||browser==null)return;
    JSONObject data=new JSONObject();
    try{data.put("type", event);data.put("message",message);}catch(Exception ignored){}
-   browser.evaluateJavascript("window.nativeMessage("+JSONObject.quote(data.toString())+")",null);
+   String eventJson=data.toString();
+   if(!pageReady){if(pendingUiEvents.size()>=128)pendingUiEvents.removeFirst();pendingUiEvents.addLast(eventJson);return;}
+   deliverUiEvent(eventJson);
   });
+ }
+ private void deliverUiEvent(String eventJson){
+  if(destroyed||browser==null)return;
+  browser.evaluateJavascript("if(typeof window.nativeMessage==='function'){window.nativeMessage("+JSONObject.quote(eventJson)+");}",null);
  }
  static String localIp() {
   try {
@@ -507,6 +532,7 @@ public final class MainActivity extends Activity {
   @JavascriptInterface public void cancelSensorSearch(){if(sensor!=null)sensor.cancelSearch();}
   @JavascriptInterface public void selectSensorHouse(int house){if(sensor!=null)sensor.selectHouse(house);}
   @JavascriptInterface public void beginSensorSetup(int house){if(sensor!=null)sensor.beginSetup(house);}
+  @JavascriptInterface public void editSensorSetup(int house){if(sensor!=null)sensor.editSetup(house);}
   @JavascriptInterface public void finishSensorSetup(){if(sensor!=null)sensor.finishSetup();}
   @JavascriptInterface public void leaveSensorSetup(){if(sensor!=null)sensor.leaveSetup();}
   @JavascriptInterface public void changeSensorId(int id,boolean oneDevice){if(sensor!=null)sensor.changeId(id,oneDevice);}

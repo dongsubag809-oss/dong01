@@ -11,7 +11,7 @@ const nodes={};
 function node(id){
  if(!nodes[id])nodes[id]={
   id,value:id==="editHouse"||id==="doPlcId"?"1":"",
-  children:[],innerHTML:"",textContent:"",scrollTop:0,
+  style:{},children:[],innerHTML:"",textContent:"",scrollTop:0,
   classList:{toggle(){},add(){},remove(){}},
   setAttribute(name,value){this[name]=value;},
   getAttribute(name){return this[name]||null;}
@@ -26,7 +26,7 @@ const doc={
 };
 const saved={};
 const ctx=vm.createContext({
- document:doc,window:{},
+ document:doc,window:{EBAutomation:{init(){},namesChanged(){}},EBSensor:{init(){},decorate(){}}},
  localStorage:{getItem:k=>saved[k]||null,setItem:(k,v)=>{saved[k]=v}},
  setInterval(){},Date,JSON,console
 });

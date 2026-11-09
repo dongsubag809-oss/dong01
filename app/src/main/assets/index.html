@@ -101,7 +101,11 @@ select,input{background:#10293a;color:white;border:1px solid #527587;border-radi
 @media(max-width:730px){.controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.controls{grid-template-columns:1fr}}
 </style></head>
-<body><div id="hmiFault" role="status" style="display:none;position:fixed;z-index:99998;bottom:5px;left:6px;right:6px;padding:7px;background:#651b1b;color:#fff;font-size:13px;max-height:75px;overflow:auto;border:1px solid #ff8a8a"></div><script>window.onerror=function(msg,src,line,col){var box=document.getElementById("hmiFault");if(box){box.style.display="block";box.textContent="HMI 화면 오류: "+msg+" (행 "+line+")";}return false;};</script><header>
+<body><div id="hmiFault" role="status" style="display:none;position:fixed;z-index:99998;bottom:5px;left:6px;right:6px;padding:7px;background:#651b1b;color:#fff;font-size:13px;max-height:75px;overflow:auto;border:1px solid #ff8a8a"></div><script>
+window.reportHmiFault=function(msg,src,line,col,stack){var box=document.getElementById('hmiFault');if(!box)return;box.style.display='block';box.textContent='HMI 화면 오류: '+msg+(src?' ['+String(src).split('/').pop()+']':'')+' (행 '+(line||0)+', 열 '+(col||0)+')'+(stack?' · '+String(stack).slice(0,800):'');};
+window.onerror=function(msg,src,line,col,error){window.reportHmiFault(msg,src,line,col,error&&error.stack||'');return false;};
+window.startHmiModule=function(name,api){try{if(!api||typeof api.init!=='function')throw new Error(name+' 스크립트를 불러오지 못했습니다.');api.init();}catch(error){window.reportHmiFault(name+' 초기화: '+(error.message||error),name,0,0,error.stack||'');}};
+</script><header>
 <div class="header-brand"><div class="logo"><b>ENERGYBLUE</b> | 스마트팜 5동 자동제어</div><div class="sub">IXHUB IXP101H1 · 개발자:박동수</div></div>
 <div class="header-info"><div id="plcHeaderStatus">● PLC ID1·2 검색 중</div><div class="sub">HMI V<span id="version">확인 중</span> · IP <span id="ip">확인 중</span> · <span id="clock"></span></div></div>
 <div class="header-stop"><button type="button" id="emergencyButton" class="emergency-btn" onclick="requestEmergencyStop()" aria-label="PLC 전체 출력 비상정지">⛔ 비상정지</button><button type="button" id="emergencyResetButton" class="emergency-reset" onclick="requestEmergencyReset()" disabled>비상정지 해제</button></div>
@@ -729,5 +733,5 @@ window.nativeMessage=function(value){try{var p=JSON.parse(value);if(p.type==='se
  return;
 }var target=p.type==='discovery'?'out':'updateStatus';el(target).textContent=p.message}catch(e){}}
 function tick(){el('clock').textContent=new Date().toLocaleString('ko-KR')}
-render();loadAutoPlcConfig();refreshIp();refreshPhoneDetails();setInterval(refreshPhoneDetails,3000);if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);if(window.EBAutomation)window.EBAutomation.init();if(window.EBSensor)window.EBSensor.init();
+render();loadAutoPlcConfig();refreshIp();refreshPhoneDetails();setInterval(refreshPhoneDetails,3000);if(window.NativeDiagnostics&&window.NativeDiagnostics.getAppVersion)el('version').textContent=window.NativeDiagnostics.getAppVersion();tick();setInterval(tick,1000);window.startHmiModule('automation.js',window.EBAutomation);window.startHmiModule('sensor.js',window.EBSensor);
 </script></body></html>
