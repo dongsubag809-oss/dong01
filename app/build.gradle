@@ -1,7 +1,7 @@
 plugins { id 'com.android.application' }
 
-def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('51100')).toInteger()
-def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('5.11')
+def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('51200')).toInteger()
+def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('5.12')
 
 def emulatorAbi = providers.gradleProperty('hmiTestAbi').orNull
 if (emulatorAbi != null && emulatorAbi != 'x86_64') throw new GradleException('Only x86_64 test override allowed')
