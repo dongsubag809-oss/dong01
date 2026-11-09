@@ -31,17 +31,18 @@ public final class HmiWebViewInstrumentation extends Instrumentation {
  }
  private void sensorLayouts()throws Exception{
   // Only UI fixture data; no native command or physical output is invoked by these scenarios.
-  js("window.sensorUiFixture=function(mode){var rows=[];for(var h=1;h<=5;h++)rows.push({house:h,config:{house:h,id:h,path:'/dev/ttyS6',baud:9600,fc:3,map:'h0t1',enabled:true,verified:true},registered:mode==='normal',connected:h===2,receivedAt:h===2?Date.now():0,temperature:h===2?24.6:null,humidity:h===2?61.2:null});var d=JSON.parse(JSON.stringify(rows[1]));d.houses=rows;d.selected=2;d.setup=mode==='normal'?0:2;d.searching=false;d.pending=null;if(mode==='setup'){d.config.id=1;d.houses[1].config.id=1;}if(mode==='pending'){d.pending={house:2,register:256,old:{id:1,baud:9600},next:{id:2,baud:9600},phase:'ACKNOWLEDGED'};d.connected=false;d.receivedAt=0;}EBSensor.receive(d);document.getElementById('sensorRoot').scrollIntoView();};true");
+  js("window.sensorUiFixture=function(mode){window.sensorUiMode=mode;var rows=[];for(var h=1;h<=5;h++)rows.push({house:h,config:{house:h,id:h,path:'/dev/ttyS6',baud:9600,fc:3,map:'h0t1',enabled:true,verified:true},registered:mode==='normal',connected:h===2,receivedAt:h===2?Date.now():0,temperature:h===2?24.6:null,humidity:h===2?61.2:null});var d=JSON.parse(JSON.stringify(rows[1]));d.houses=rows;d.selected=2;d.setup=mode==='normal'?0:2;d.searching=false;d.pending=null;if(mode==='setup'){d.config.id=1;d.houses[1].config.id=1;}if(mode==='pending'){d.pending={house:2,register:256,old:{id:1,baud:9600},next:{id:2,baud:9600},phase:'ACKNOWLEDGED'};d.connected=false;d.receivedAt=0;}EBSensor.receive(d);EBSensor.open();};window.sensorUiTimer=setInterval(function(){if(window.sensorUiMode)sensorUiFixture(window.sensorUiMode);},30);true");
   for(int width:new int[]{1024,800}){
    runOnMainSync(()->{android.view.ViewGroup.LayoutParams lp=web.getLayoutParams();lp.width=width;lp.height=600;web.setLayoutParams(lp);});waitJs("window.innerWidth==="+width);
    for(String mode:new String[]{"normal","setup","pending"}){
     Object result=js("(function(){sensorUiFixture('"+mode+"');var root=document.getElementById('sensorRoot'),bounds=root.getBoundingClientRect(),nodes=root.querySelectorAll('button,summary,select,input,.sensor-steps li'),buttons=[];for(var n=0;n<nodes.length;n++){var e=nodes[n];if(!e.offsetWidth||!e.offsetHeight)continue;var r=e.getBoundingClientRect();if(r.left<bounds.left-1||r.right>bounds.right+1||e.scrollWidth>e.clientWidth+2)return 'overflow '+e.id+' '+e.tagName;if(e.tagName==='BUTTON')buttons.push(r);}for(var i=0;i<buttons.length;i++)for(var j=i+1;j<buttons.length;j++){var a=buttons[i],b=buttons[j];if(Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1)return 'overlapping buttons';}return 'ok';})()");
-    check("ok".equals(result),width+" "+mode+" sensor layout: "+result);picture("sensor-"+width+"-"+mode+".png");
+    check("ok".equals(result),width+" "+mode+" sensor layout: "+result);
+    SystemClock.sleep(250);picture("sensor-"+width+"-"+mode+".png");
    }
    check(Boolean.TRUE.equals(js("(function(){sensorUiFixture('normal');document.getElementById('sensorAdvanced').open=true;var root=document.getElementById('sensorRoot'),bounds=root.getBoundingClientRect(),nodes=root.querySelectorAll('button,select,input');for(var i=0;i<nodes.length;i++){var e=nodes[i],r=e.getBoundingClientRect();if(e.offsetWidth&&(r.right>bounds.right+1||r.left<bounds.left-1||e.scrollWidth>e.clientWidth+2))return false;}return true;})()")),width+" advanced controls fit");
    js("document.getElementById('sensorAdvanced').open=false;true");
   }
-  js("EBSensor.reload();true");
+  js("clearInterval(window.sensorUiTimer);window.sensorUiMode='';EBSensor.reload();true");
  }
  @Override public void onStart(){Bundle out=new Bundle();try{
   Intent i=new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.energyblue.househmi.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

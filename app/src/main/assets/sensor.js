@@ -19,7 +19,7 @@ window.EBSensor=(function(){
  function init(){
   if(!e('sensorRoot'))return;
   e('sensorRoot').innerHTML=[
-   '<div class="panel sensor-simple"><div class="sensor-heading"><div><h3>온습도 센서 연결</h3><p class="auto-muted">동을 고르면 센서 ID도 같은 번호로 설정됩니다.</p></div><span id="sensorSetupStatus" class="auto-pill"></span></div>',
+   '<div class="panel sensor-simple"><div class="sensor-heading"><div><h3>온습도 센서 연결</h3><p id="sensorIntro" class="auto-muted">동을 고르면 센서 ID도 같은 번호로 설정됩니다.</p></div><span id="sensorSetupStatus" class="auto-pill"></span></div>',
    '<ol class="sensor-steps"><li id="sensorStep1">① 동 선택</li><li id="sensorStep2">② 센서 확인</li><li id="sensorStep3">③ 적용·완료</li></ol>',
    '<div class="sensor-house-grid" id="sensorHouseButtons"></div><select id="sensorHouse" aria-label="설치할 동" style="display:none" onchange="EBSensor.selectHouse(this.value)"></select>',
    '<div class="sensor-guide"><h3 id="sensorFlowTitle">설치할 동을 선택하세요</h3><p id="sensorFlowHelp"></p><p id="sensorDetected" class="sensor-detected"></p>',
@@ -51,8 +51,8 @@ window.EBSensor=(function(){
    var r=rows[i-1],ok=r&&r.registered&&r.config.verified&&r.config.enabled&&fresh(r)&&!setup&&!p;
    buttons+='<button id="sensorHouse'+i+'" class="sensor-house'+(i===h?' selected':'')+'" aria-pressed="'+(i===h?'true':'false')+'" '+((setup||busy||p)?'disabled':'')+' onclick="EBSensor.selectHouse('+i+')"><b>'+i+'동</b><span>ID '+i+'</span><small>'+(ok?'수신 정상':'미수신')+'</small></button>';
   }if(buttons!==houseMarkup){houseMarkup=buttons;e('sensorHouseButtons').innerHTML=buttons;}e('sensorHouse').disabled=setup||busy||!!p;
-  e('sensorStep1').className=!setup&&!p?'current':'done';e('sensorStep2').className=setup&&!p?'current':'';e('sensorStep3').className=p?'current':!setup&&live?'done':'';
-  showNode('sensorBegin',!setup&&!p);showNode('sensorSetupControls',setup&&!p);showNode('sensorPower',!!p);showNode('sensorCancel',busy);
+  e('sensorStep1').className=!setup&&!p?'current':'done';e('sensorStep2').className=setup&&!p?'current':'';e('sensorStep3').className=p?'current':!setup&&good?'done':'';
+  showNode('sensorIntro',!setup&&!p);showNode('sensorHouseButtons',!setup&&!p);showNode('sensorBegin',!setup&&!p);showNode('sensorSetupControls',setup&&!p);showNode('sensorPower',!!p);showNode('sensorCancel',busy);
   e('sensorOne').disabled=busy||!!p;e('sensorBegin').disabled=setup||busy||!!p||dirty;e('sensorBegin').textContent=h+'동에 센서 연결 / 변경';
   e('sensorSearch').disabled=!here||busy||!!p||dirty||!single;
   e('sensorWriteId').disabled=!here||busy||!!p||dirty||!single||!live||!c.verified||(c.id!==h&&(c.fc!==3||c.map!=='h0t1'));
@@ -63,6 +63,7 @@ window.EBSensor=(function(){
   else if(setup){e('sensorFlowTitle').textContent=d.setup+'동 센서 '+(busy?'찾는 중':live?'확인 완료':'확인');e('sensorFlowHelp').textContent=busy?'응답을 기다리고 있습니다. 찾기 중지로 취소할 수 있습니다.':!single?'COM6에 설정할 센서 한 대만 연결한 뒤 아래 항목을 체크하세요.':live?'아래 '+h+'동 설정 버튼을 누르세요. ID가 이미 같으면 쓰기 없이 실제 수신을 확인해 연결합니다.':'센서 찾기를 누르세요. ID와 통신 속도는 자동으로 확인합니다.';}
   else{e('sensorFlowTitle').textContent=good?h+'동 수신 정상 · ID '+h:h+'동 센서 연결';e('sensorFlowHelp').textContent=good?'온습도는 해당 동 대시보드와 이력에 연결되어 있습니다. 추가 센서는 설치할 동을 선택하세요.':'설치할 동을 고르고 아래 버튼을 누르세요. 센서 ID를 직접 입력할 필요가 없습니다.';}
  }
+ function open(){var root=e('sensorRoot'),main=document.querySelector('main');if(root&&main){window.scrollTo(0,0);main.scrollTop+=root.getBoundingClientRect().top-main.getBoundingClientRect().top;}}
  function refresh(){try{var h=window.NativeDiagnostics;if(h&&typeof h.sensorInfo==='function')receive(h.sensorInfo());}catch(ex){e('sensorMessage').textContent='센서 조회 오류: '+ex.message;}}
  function reload(){dirty=false;loaded=false;refresh();}
  function selectHouse(h){if(!clean())return;if(latest&&(latest.setup||latest.pending||latest.searching)){e('sensorMessage').textContent='진행 중인 센서 설정을 먼저 마치세요.';return;}dirty=false;loaded=false;e('sensorOne').checked=false;host('selectSensorHouse',[+h]);}
@@ -99,5 +100,5 @@ window.EBSensor=(function(){
   if(e('houseSensorStatus'+h))e('houseSensorStatus'+h).textContent=label;
   if(e('environmentSensor'+h))e('environmentSensor'+h).textContent=label+(ok?' · '+number(r,'temperature','°C')+' / '+number(r,'humidity','%RH'):'');
  }if(e('dashSensor'))e('dashSensor').textContent='COM6 센서 '+count+'/5동 수신';}
- return {init:init,receive:receive,reload:reload,dirty:mark,selectHouse:selectHouse,apply:apply,oneChanged:renderFlow,connect:connect,begin:begin,edit:edit,search:search,writeId:writeId,writeBaud:writeBaud,confirm:confirm,cancel:function(){host('cancelSensorSearch');},stop:function(){host('stopSensor');},verify:function(){host('verifySensorChange');},restore:function(){host('restoreSensorOld');},finish:function(){host('finishSensorSetup');},leave:function(){host('leaveSensorSetup');},decorate:decorate};
+ return {init:init,open:open,receive:receive,reload:reload,dirty:mark,selectHouse:selectHouse,apply:apply,oneChanged:renderFlow,connect:connect,begin:begin,edit:edit,search:search,writeId:writeId,writeBaud:writeBaud,confirm:confirm,cancel:function(){host('cancelSensorSearch');},stop:function(){host('stopSensor');},verify:function(){host('verifySensorChange');},restore:function(){host('restoreSensorOld');},finish:function(){host('finishSensorSetup');},leave:function(){host('leaveSensorSetup');},decorate:decorate};
 })();

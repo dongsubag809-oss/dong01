@@ -29,5 +29,7 @@
 .sensor-baud{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}
 .sensor-baud label{display:flex;flex-direction:column;gap:8px}.sensor-baud button{min-height:48px}
 .sensor-raw{white-space:pre-wrap;word-break:break-all;font-size:15px;max-width:100%}
-.sensor-values{margin-top:14px!important}
+.sensor-values{margin-top:14px!important;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.sensor-values>div{min-width:0;padding:12px 8px;background:#102435;border:1px solid #3a566a;border-radius:9px;color:#b7cedc;font-size:14px}
+.sensor-values strong{display:block;color:#f0f8ff;font-size:22px;line-height:1.5;margin-top:6px;overflow-wrap:break-word}
 @media(max-width:600px){.sensor-guide{padding:12px}.sensor-house-grid{gap:4px}.sensor-house b{font-size:20px}.sensor-house small,.sensor-house span{font-size:11px}.sensor-steps li{font-size:13px}.sensor-actions button{flex:1 1 170px}.sensor-power strong{font-size:20px}}

@@ -106,7 +106,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.HMI_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.HMI_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.HMI_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ inputs.tag || 'v5.12' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.12.1' }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::Invalid release tag"; exit 1; }
@@ -136,7 +136,7 @@ jobs:
           rm -f "$RUNNER_TEMP/hmi-sign/signing.jks"
       - name: Create single ZIP distribution with installation guide
         env:
-          RELEASE_TAG: ${{ inputs.tag || 'v5.12' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.12.1' }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/hmi-package"
@@ -188,6 +188,7 @@ jobs:
             "V5.11 review: run real Android7.1 WebView/Java bridge instrumentation plus production sensor, SQLite, native PTY, HTTPS and HMI regressions before signing; COM5 serial, PLC mappings, motor interlocks and phone gateway unchanged. Physical HMI/RS485 remains unverified." \
             "V5.12: simplify sensor setup to house buttons, discover, and apply; show one-device and power-cycle steps in place; same-ID registration uses existing readback without FC06; advanced port/baud/map/restore controls retained behind disclosure" \
             "V5.12 review: production sensor Java/C/PLC communication unchanged; verify legacy Android UI layout at 800x600 and 1024x600, setup/pending/completed flow, single-device acknowledgment, read-only same-ID registration and no repeated writes; actual HMI remains unverified" \
+            "V5.12.1 visual review: collapse house selector and intro during setup/pending to expose apply controls on small screens; separate live measurement cards; scroll only HMI content while preserving header; wait for composed frames in screenshot checks" \
             > "$RUNNER_TEMP/hmi-package/VERSION_HISTORY.txt"
           printf '%s\n' "Built from branch: $GITHUB_REF_NAME" "Source commit: $GITHUB_SHA" "Release tag targets the audited source commit." > "$RUNNER_TEMP/hmi-package/BUILD_SOURCE.txt"
           printf '%s\n' \
@@ -243,7 +244,7 @@ jobs:
             "10. ARMv7/ARM64 센서 모듈은 APK 안에 포함됩니다. 별도 Windows DLL/USB 드라이버 설치는 필요하지 않습니다. 통신맵과 문서 오기는 SENSOR_PROTOCOL_REGISTRY.txt를 참조하세요." \
             "" \
             "V5.10에서 ID2 변경 후 대시보드가 비거나 Script error.(행0)이 표시되는 경우" \
-            "기존 앱과 데이터를 삭제하지 말고 V5.12를 덮어 설치하세요. 센서 전원을 껐다 켜고 기다리면 저장된 ID2의 정상 응답을 확인하여 2동에 자동 등록합니다. ID 변경 쓰기를 다시 누르지 마세요." \
+            "기존 앱과 데이터를 삭제하지 말고 V5.12.1을 덮어 설치하세요. 센서 전원을 껐다 켜고 기다리면 저장된 ID2의 정상 응답을 확인하여 2동에 자동 등록합니다. ID 변경 쓰기를 다시 누르지 마세요." \
             "화면 초기화 전 알림은 대기 후 전달하고 자동제어·센서 화면은 각각 초기화합니다. 다시 오류가 나면 상세 파일·행·내용을 확인할 수 있습니다. 계속 미수신이면 2동 선택 후 실제 장치 경로·속도와 선택 ID2의 TX/RX·오류를 확인하세요." \
             "" \
             "검증 범위" \
@@ -264,7 +265,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag || 'v5.12' }}
+          RELEASE_TAG: ${{ inputs.tag || 'v5.12.1' }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
