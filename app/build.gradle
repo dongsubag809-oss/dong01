@@ -1,7 +1,10 @@
 plugins { id 'com.android.application' }
 
-def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('473')).toInteger()
-def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('4.73-alpha')
+def otaVersionCode = (providers.gradleProperty('hmiVersionCode').getOrElse('51201')).toInteger()
+def otaVersionName = providers.gradleProperty('hmiVersionName').getOrElse('5.12.1')
+
+def emulatorAbi = providers.gradleProperty('hmiTestAbi').orNull
+if (emulatorAbi != null && emulatorAbi != 'x86_64') throw new GradleException('Only x86_64 test override allowed')
 
 android {
     namespace 'com.energyblue.househmi'
@@ -16,7 +19,8 @@ android {
         applicationId 'com.energyblue.househmi'
         minSdk 23
         targetSdk 28
-        ndk { abiFilters 'armeabi-v7a', 'arm64-v8a' }
+        ndk { if (emulatorAbi == null) { abiFilters 'armeabi-v7a', 'arm64-v8a' } else { abiFilters 'x86_64' } }
+        testInstrumentationRunner 'com.energyblue.househmi.HmiWebViewInstrumentation'
         versionCode = otaVersionCode
         versionName = otaVersionName
     }

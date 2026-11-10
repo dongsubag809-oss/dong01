@@ -1,0 +1,35 @@
+.sensor-simple{margin-top:8px;line-height:1.55}
+.sensor-simple h3{margin:0 0 8px;font-size:21px}
+.sensor-heading{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.sensor-steps{list-style:none;display:flex;padding:0;margin:14px 0}
+.sensor-steps li+li{margin-left:8px}
+.sensor-steps li{flex:1;min-width:0;padding:10px 5px;text-align:center;border-radius:8px;background:#0f2231;color:#a3b8c7;font-weight:bold}
+.sensor-steps .current{background:#236078;color:#fff;border:1px solid #69d8ef}
+.sensor-steps .done{color:#93e8bc;background:#123e36}
+.sensor-house-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0 16px}
+.sensor-house{min-height:90px;min-width:0;padding:8px 4px!important;line-height:1.45;white-space:normal}
+.sensor-house b{display:block;font-size:23px}.sensor-house span,.sensor-house small{display:block;font-size:13px}
+.sensor-house.selected{border:2px solid #8ae6fc;background:#24627b!important;box-shadow:inset 0 0 0 1px #69d8ef}
+.sensor-house:disabled{opacity:.75}.sensor-house.selected:disabled{opacity:1}
+.sensor-guide{background:#0d2232;border:1px solid #3a657a;border-radius:12px;padding:18px;overflow-wrap:break-word}
+.sensor-guide p{font-size:16px;line-height:1.65;margin:8px 0 14px}
+.sensor-main{background:#237c96!important;border:2px solid #7bd7ed!important;min-height:56px;font-size:18px!important;white-space:normal}
+.sensor-guide>.sensor-main{width:100%}
+.sensor-detected{color:#a6f0cb;font-weight:bold}
+.sensor-one{display:flex;gap:12px;align-items:center;min-height:56px;margin:10px 0;padding:10px;border:1px solid #47677a;border-radius:8px;font-size:16px;line-height:1.6}
+.sensor-one input{width:25px;height:25px;flex:0 0 25px;margin-right:12px}
+.sensor-actions{display:flex;flex-wrap:wrap;align-items:center;margin:12px 0}
+.sensor-actions button{min-height:50px;max-width:100%;white-space:normal;overflow-wrap:break-word;margin:0 10px 10px 0}
+.sensor-secondary{margin-top:12px;background:#233c4d!important;font-size:14px!important;min-height:48px}
+.sensor-power{border:2px solid #e8be70;border-radius:10px;background:#41361f;color:#fff1cf;padding:16px;margin-top:12px}
+.sensor-power strong{font-size:23px}.sensor-power p{margin-bottom:0}
+.sensor-message{overflow-wrap:break-word;white-space:pre-wrap;color:#c9deeb;margin-top:14px!important}
+.sensor-advanced{border-top:1px solid #355264;margin-top:16px;padding-top:10px}
+.sensor-advanced>summary{min-height:50px;cursor:pointer;line-height:1.5;padding:12px 4px;font-size:16px;font-weight:bold;white-space:normal}
+.sensor-baud{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:16px 0}
+.sensor-baud label{display:flex;flex-direction:column;gap:8px}.sensor-baud button{min-height:48px}
+.sensor-raw{white-space:pre-wrap;word-break:break-all;font-size:15px;max-width:100%}
+.sensor-values{margin-top:14px!important;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.sensor-values>div{min-width:0;padding:12px 8px;background:#102435;border:1px solid #3a566a;border-radius:9px;color:#b7cedc;font-size:14px}
+.sensor-values strong{display:block;color:#f0f8ff;font-size:22px;line-height:1.5;margin-top:6px;overflow-wrap:break-word}
+@media(max-width:600px){.sensor-guide{padding:12px}.sensor-house-grid{gap:4px}.sensor-house b{font-size:20px}.sensor-house small,.sensor-house span{font-size:11px}.sensor-steps li{font-size:13px}.sensor-actions button{flex:1 1 170px}.sensor-power strong{font-size:20px}}

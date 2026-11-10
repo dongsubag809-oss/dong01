@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=2">
+<meta name="theme-color" content="#122638"><title>ENERGYBLUE 5동 모바일</title>
+<style>
+:root{color-scheme:dark;font-family:"Malgun Gothic",sans-serif;color:#e9f1f5;background:#091923}
+*{box-sizing:border-box}body{margin:0;padding:12px;max-width:960px;margin:auto}header{position:sticky;top:0;background:#122c3b;border:1px solid #32566b;border-radius:12px;padding:12px;z-index:2}
+h1{font-size:19px;margin:0 0 6px}.meta,.small{font-size:12px;color:#afc8d6}button,input{font:inherit;border-radius:9px;min-height:42px}
+button{background:#294b62;color:white;border:1px solid #7390a1;padding:9px 12px;cursor:pointer}
+button:disabled{opacity:.42;cursor:default}input{background:#162f3d;border:1px solid #638093;color:white;width:100%;padding:8px}
+article,.panel{border:1px solid #37586b;border-radius:12px;background:#112938;margin:10px 0;padding:12px}
+h2{font-size:17px;margin:4px 0 12px}h3{font-size:15px;margin:5px 0}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.row>*{flex:1 1 auto}.status{padding:6px 9px;border-radius:9px;background:#344959;display:inline-block;font-weight:700}
+.good{background:#165631;color:#d4ffe1}.bad{background:#674222;color:#fff1d8}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px}
+.card{border:1px solid #456378;border-radius:10px;padding:10px;min-width:0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}.actions button{width:100%}
+.motor{display:grid;gap:7px}.motor button{width:100%}
+.selected.on,.selected.up{background:#14783c;border-color:#a9ffcb}.selected.off,.selected.down{background:#325caa;border-color:#9bd2ff}.selected.stop{background:#c87919;border-color:#ffe4ac}
+.warn{color:#f7d09b}.error{color:#ffb0b0;white-space:pre-wrap}#commandInfo{min-height:38px;white-space:pre-wrap}#pair{max-width:400px}
+#eStop{background:#be1226;font-weight:900;border:2px solid #ff8a91}
+@media(max-width:440px){body{padding:6px}.card{padding:8px}h1{font-size:17px}header{padding:9px}}
+</style></head><body>
+<header><h1>ENERGYBLUE · 스마트팜 5동</h1>
+<div class="row"><span class="meta">개발자:박동수 · HMI 중앙 PLC 제어</span><span id="connection" class="status">연결 확인 중</span></div>
+<div class="row"><button id="refresh" onclick="refresh()">새로고침</button><button id="eStop" onclick="emergency()" disabled>⛔ 비상정지 요청</button></div>
+</header>
+<section class="panel" id="pair"><h2>HMI 연결 인증</h2><p>HMI 화면의 <b>환경설정 → 휴대폰 연동</b>에서 원격 기능을 켜고 표시되는 6자리 일회용 코드를 입력하세요.</p>
+<label>연결 코드<input id="pin" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="6자리 인증 코드"></label>
+<button onclick="pair()" style="margin-top:8px;width:100%">휴대폰 연결</button>
+<p class="small">HTTPS 통신 · 세션은 2시간 뒤 만료 · 앱을 다시 열면 다시 인증해야 합니다.</p>
+<p id="pairResult" class="error"></p></section>
+<section id="main" style="display:none">
+<article><h2>PLC 실제 통신 상태</h2><div class="row"><span id="id1" class="status">ID 1 확인 중</span><span id="id2" class="status">ID 2 확인 중</span></div>
+<p id="remoteRole" class="small"></p><p class="warn">화면 상태는 PLC가 실제 회신한 DO/DI입니다. 물리적인 창문 위치·모터 회전 및 리미트 스위치 정상동작을 보증하지 않습니다.</p></article>
+<div id="houses"></div>
+<article><h2>원격 명령 결과</h2><div id="commandInfo" class="small">수신 대기</div></article>
+</section>
+<script>
+"use strict";
+var token="",role="monitor",latest=null,commandBusy=false,controlEnabled=false;
+var names=["조명 1","조명 2","환풍기 1","환풍기 2","좌측 그늘막 열림","좌측 그늘막 닫힘","우측 그늘막 열림","우측 그늘막 닫힘","내측창 좌측 열림","내측창 좌측 닫힘","내측창 우측 열림","내측창 우측 닫힘","외측창 좌측 하단 열림","외측창 좌측 하단 닫힘","외측창 좌측 상단 열림","외측창 좌측 상단 닫힘","외측창 우측 열림","외측창 우측 닫힘","천창 열림","천창 닫힘","바닥 환풍기","열풍기","관수 1","관수 2"];
+function label(s){return String(s||"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function addr(h,slot){var absolute=(h-1)*24+slot;return {id:Math.floor(absolute/64)+1,ch:absolute%64+1};}
+function board(id){return latest&&latest.boards&&latest.boards[String(id)]||null;}
+function bit(id,ch,type){var b=board(id);if(!b||!b.connected||!b[type]||b[type].length!==64)return null;return b[type].charAt(ch-1)==="1";}
+async function api(path,data){
+ var opt={method:data?"POST":"GET",headers:{"Authorization":"Bearer "+token}};
+ if(data){opt.headers["Content-Type"]="application/json";opt.body=JSON.stringify(data);}
+ var res=await fetch(path,opt);
+ var obj=await res.json();
+ if(!res.ok)throw Error(obj.error||"서버 응답 오류 "+res.status);
+ return obj;
+}
+async function pair(){
+ document.getElementById("pairResult").textContent="";
+ try{
+  var code=document.getElementById("pin").value.trim();
+  var r=await fetch("/api/pair",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code})});
+  var p=await r.json();if(!r.ok)throw Error(p.error||"인증 실패");
+  token=p.token;role=p.role;
+  document.getElementById("pin").value="";
+  document.getElementById("pair").style.display="none";
+  document.getElementById("main").style.display="block";
+  await refresh();
+ }catch(e){document.getElementById("pairResult").textContent=e.message;}
+}
+function paint(){
+ var root=document.getElementById("houses");
+ if(!latest)return;
+ controlEnabled=!!latest.remoteControl&&role==="control"&&!latest.emergency;
+ document.getElementById("eStop").disabled=role!=="control";
+ document.getElementById("remoteRole").textContent="원격 권한: "+(controlEnabled?"원격 제어 활성":"감시 전용 또는 HMI 수동 제어 잠금")+(latest.emergency?" · 비상정지 잠금":"");
+ [1,2].forEach(function(id){
+  var b=board(id),el=document.getElementById("id"+id);
+  var healthy=!!(b&&b.connected);
+  el.textContent="PLC ID "+id+" · "+(healthy?"통신 양호":"통신 미연결");
+  el.className="status "+(healthy?"good":"bad");
+ });
+ var html="";
+ for(var h=1;h<=5;h++){
+  var houseName=latest.houseNames&&latest.houseNames[h-1]||h+"동";
+  html+='<article><h2>'+label(houseName)+'</h2><div class="grid">';
+  for(var slot=0;slot<24;slot++){
+   if(slot>=4&&slot<=19&&slot%2===1)continue;
+   var a=addr(h,slot),on=bit(a.id,a.ch,"do");
+   var n=latest.outputNames&&latest.outputNames[(h-1)*24+slot]||names[slot];
+   if(slot>=4&&slot<=19){
+    var opposite=addr(h,slot+1),close=bit(opposite.id,opposite.ch,"do");
+    var enabled=controlEnabled&&on!==null&&close!==null&&!commandBusy;
+    var selected=on&&close?"충돌":on?"up":close?"down":on===false&&close===false?"stop":"";
+    html+='<div class="card"><h3>'+label(n.replace(/ 열림$/,""))+'</h3><div class="small">ID '+a.id+' DO'+a.ch+' / DO'+opposite.ch+'</div><div class="motor">';
+    [["up",1,"▲ 열림"],["stop",0,"■ 정지"],["down",-1,"▼ 닫힘"]].forEach(function(option){
+     html+='<button class="'+(selected===option[0]?"selected "+option[0]:"")+'" '+(enabled?"":"disabled")+' onclick="actMotor('+h+','+slot+','+option[1]+')">'+option[2]+'</button>';
+    });
+    html+='</div>'+(selected==="충돌"?'<p class="error">정역 동시 ON 확인 필요</p>':"")+'</div>';
+   }else{
+    var enabled=controlEnabled&&on!==null&&!commandBusy;
+    html+='<div class="card"><h3>'+label(n)+'</h3><div class="small">ID '+a.id+' DO'+a.ch+'</div><div class="actions">'+
+     '<button class="'+(on===true?"selected on":"")+'" '+(enabled?"":"disabled")+' onclick="actDO('+h+','+slot+',true)">ON</button>'+
+     '<button class="'+(on===false?"selected off":"")+'" '+(enabled?"":"disabled")+' onclick="actDO('+h+','+slot+',false)">OFF</button></div></div>';
+   }
+  }
+  html+='</div></article>';
+ }
+ root.innerHTML=html;
+}
+async function refresh(){
+ if(!token)return;
+ try{latest=await api("/api/status");paint();document.getElementById("connection").textContent="HMI HTTPS 연결됨";document.getElementById("connection").className="status good";}
+ catch(e){
+  document.getElementById("connection").textContent="HMI 연결 끊김";document.getElementById("connection").className="status bad";
+  controlEnabled=false;document.getElementById("eStop").disabled=true;
+  document.getElementById("commandInfo").textContent="통신 오류: "+e.message;
+  if(e.message.includes("pairing")){token="";document.getElementById("pair").style.display="block";document.getElementById("main").style.display="none";}
+ }
+}
+async function send(payload){
+ if(commandBusy||!controlEnabled)return;
+ commandBusy=true;paint();
+ var report=document.getElementById("commandInfo");report.textContent="HMI 요청 송신 중 · PLC 재수신 확인 필요";
+ try{
+  var r=await api("/api/command",payload);
+  report.textContent=r.result+" · 실제 DO 반영은 다음 상태 수신으로 확인하세요";
+  await refresh();
+ }catch(e){report.textContent="명령 실패: "+e.message;}
+ finally{commandBusy=false;paint();}
+}
+function actDO(h,slot,on){send({type:"output",house:h,slot:slot,on:on});}
+function actMotor(h,slot,direction){send({type:"motor",house:h,slot:slot,direction:direction});}
+async function emergency(){
+ if(!token||role!=="control")return;
+ if(!confirm("HMI에 비상정지 요청을 전송합니다. 통신 장애 시 모든 출력 정지는 보장되지 않습니다."))return;
+ try{var r=await api("/api/command",{type:"emergency"});document.getElementById("commandInfo").textContent=r.result;await refresh();}
+ catch(e){document.getElementById("commandInfo").textContent="비상정지 명령 전달 실패: "+e.message;}
+}
+setInterval(function(){if(token)refresh();},3000);
+</script></body></html>
